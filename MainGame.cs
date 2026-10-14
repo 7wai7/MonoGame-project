@@ -1,51 +1,94 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using MonoGame_project.Configuration;
+using MonoGame_project.Engine;
+using MonoGame_project.Game;
 
 namespace MonoGame_project;
 
-public class MainGame : Game
+public sealed class MainGame : Microsoft.Xna.Framework.Game
 {
-    private readonly GraphicsDeviceManager _graphics = null!;
+    private readonly GameSettings _settings = GameSettings.Default;
+    private readonly GraphicsDeviceManager _graphics;
+    private readonly GameEngine _engine;
     private SpriteBatch _spriteBatch = null!;
 
     public MainGame()
     {
         _graphics = new GraphicsDeviceManager(this);
+        _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
+        _graphics.PreferredBackBufferHeight = _settings.BackBufferHeight;
+        _graphics.SynchronizeWithVerticalRetrace = _settings.VSync;
+
         Content.RootDirectory = "Content";
         IsMouseVisible = true;
+        IsFixedTimeStep = false;
+        Window.Title = _settings.WindowTitle;
+
+        _engine = new GameEngine(
+            new BootstrapScene(),
+            _settings.FixedTimeStep,
+            _settings.MaximumFrameTime);
     }
 
     protected override void Initialize()
     {
-        // TODO: Add your initialization logic here
+        var context = new EngineContext(
+            GraphicsDevice,
+            Content,
+            Window,
+            Services);
 
+        _engine.Initialize(context);
+
+        // MonoGame may enter LoadContent from its base initialization path,
+        // so the engine must be ready before this call.
         base.Initialize();
     }
 
     protected override void LoadContent()
     {
         _spriteBatch = new SpriteBatch(GraphicsDevice);
-
-        // TODO: use this.Content to load your game content here
+        _engine.LoadContent();
     }
 
     protected override void Update(GameTime gameTime)
     {
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
+        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
+            Keyboard.GetState().IsKeyDown(Keys.Escape))
+        {
             Exit();
+        }
 
-        // TODO: Add your update logic here
-
+        _engine.Update(gameTime);
         base.Update(gameTime);
     }
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(Color.CornflowerBlue);
+        GraphicsDevice.Clear(_settings.ClearColor);
 
-        // TODO: Add your drawing code here
-
+        _engine.Draw(gameTime, _spriteBatch!);
         base.Draw(gameTime);
+    }
+
+    protected override void UnloadContent()
+    {
+        _engine.UnloadContent();
+        _spriteBatch.Dispose();
+        _spriteBatch = null!;
+
+        base.UnloadContent();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _engine.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }
