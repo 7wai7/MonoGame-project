@@ -44,3 +44,11 @@ in `EntityCommandBuffer` and call `Playback(World)` after iteration instead.
 
 Resources are world-scoped non-component services or state. Register them with
 `World.SetResource(...)` and retrieve them with `World.GetResource<T>()`.
+
+## 3D rendering
+
+An active camera entity has `Transform3D` and `Camera3D`. A renderable entity
+has `Transform3D` and `MeshRenderer`. `MeshRenderSystem` finds the camera,
+creates its view/projection matrices, then draws every visible mesh using depth
+testing and `BasicEffect` lighting. `ProceduralMeshFactory` currently creates a
+box and is the starting point for future procedural terrain meshes.
