@@ -32,9 +32,8 @@ public sealed class BootstrapScene : GameScene
 
     protected override void OnLoadContent(EngineContext context)
     {
-        _platformMesh = ProceduralMeshFactory.CreateBox(
-            context.GraphicsDevice,
-            new Vector3(10f, 0.5f, 10f));
+        var platformMeshData = ProceduralMeshFactory.CreateBox(new Vector3(10f, 0.5f, 10f));
+        _platformMesh = new Mesh(context.GraphicsDevice, platformMeshData);
 
         World.Add(
             _platform,

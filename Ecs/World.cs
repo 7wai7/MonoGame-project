@@ -14,6 +14,7 @@ public sealed class World : IDisposable
     private readonly Stack<int> _freeIds = [];
     private readonly Dictionary<Type, IComponentPool> _componentPools = [];
     private readonly Dictionary<Type, object> _resources = [];
+    private bool _notifyingLifecycle;
     private bool _disposed;
 
     internal int StructureVersion { get; private set; }
@@ -21,9 +22,22 @@ public sealed class World : IDisposable
     public int EntityCount { get; private set; }
     public EntityEnumerable Entities => new(this);
 
+    /// <summary>
+    /// Raised before an entity and any of its components are removed.
+    /// The entity is still alive and its components can still be read by the handler.
+    /// </summary>
+    public event Action<World, Entity> EntityDestroying = IgnoreEntityDestroying;
+
+    /// <summary>
+    /// Raised immediately before a component is removed, including removal caused by
+    /// entity destruction, ClearEntities, or World disposal.
+    /// </summary>
+    public event Action<World, Entity, Type> ComponentRemoving = IgnoreComponentRemoving;
+
     public Entity CreateEntity()
     {
         ThrowIfDisposed();
+        EnsureStructuralChangesAllowed();
 
         int id;
         if (_freeIds.TryPop(out var recycledId))
@@ -52,6 +66,17 @@ public sealed class World : IDisposable
     public void DestroyEntity(Entity entity)
     {
         EnsureAlive(entity);
+        EnsureStructuralChangesAllowed();
+
+        NotifyEntityDestroying(entity);
+
+        foreach (var pool in _componentPools.Values)
+        {
+            if (pool.Has(entity))
+            {
+                NotifyComponentRemoving(entity, pool.ComponentType);
+            }
+        }
 
         foreach (var pool in _componentPools.Values)
         {
@@ -73,6 +98,7 @@ public sealed class World : IDisposable
     public ref T Add<T>(Entity entity, T component) where T : struct, IComponent
     {
         EnsureAlive(entity);
+        EnsureStructuralChangesAllowed();
         ref var added = ref GetOrCreatePool<T>().Add(entity, component);
         StructureVersion++;
         return ref added;
@@ -82,6 +108,7 @@ public sealed class World : IDisposable
     public ref T Set<T>(Entity entity, T component) where T : struct, IComponent
     {
         EnsureAlive(entity);
+        EnsureStructuralChangesAllowed();
         ref var result = ref GetOrCreatePool<T>().Set(entity, component, out var wasAdded);
         if (wasAdded)
         {
@@ -121,11 +148,14 @@ public sealed class World : IDisposable
     public bool Remove<T>(Entity entity) where T : struct, IComponent
     {
         EnsureAlive(entity);
-        if (!TryGetPool<T>(out var pool) || !pool.Remove(entity))
+        EnsureStructuralChangesAllowed();
+        if (!TryGetPool<T>(out var pool) || !pool.Has(entity))
         {
             return false;
         }
 
+        NotifyComponentRemoving(entity, typeof(T));
+        pool.Remove(entity);
         StructureVersion++;
         return true;
     }
@@ -201,6 +231,25 @@ public sealed class World : IDisposable
     public void ClearEntities()
     {
         ThrowIfDisposed();
+        EnsureStructuralChangesAllowed();
+
+        for (var id = 0; id < _alive.Count; id++)
+        {
+            if (!_alive[id])
+            {
+                continue;
+            }
+
+            var entity = new Entity(id, _generations[id]);
+            NotifyEntityDestroying(entity);
+            foreach (var pool in _componentPools.Values)
+            {
+                if (pool.Has(entity))
+                {
+                    NotifyComponentRemoving(entity, pool.ComponentType);
+                }
+            }
+        }
 
         foreach (var pool in _componentPools.Values)
         {
@@ -230,6 +279,8 @@ public sealed class World : IDisposable
             return;
         }
 
+        ClearEntities();
+
         foreach (var resource in _resources.Values)
         {
             if (resource is IDisposable disposable)
@@ -243,6 +294,8 @@ public sealed class World : IDisposable
         _alive.Clear();
         _generations.Clear();
         _freeIds.Clear();
+        EntityDestroying = IgnoreEntityDestroying;
+        ComponentRemoving = IgnoreComponentRemoving;
         EntityCount = 0;
         StructureVersion++;
         _disposed = true;
@@ -260,6 +313,7 @@ public sealed class World : IDisposable
             return (ComponentPool<T>)existing;
         }
 
+        EnsureStructuralChangesAllowed();
         var pool = new ComponentPool<T>();
         _componentPools.Add(typeof(T), pool);
         return pool;
@@ -283,6 +337,49 @@ public sealed class World : IDisposable
         if (!IsAlive(entity))
         {
             throw new InvalidOperationException($"{entity} is not alive in this world.");
+        }
+    }
+
+    private void NotifyEntityDestroying(Entity entity)
+    {
+        _notifyingLifecycle = true;
+        try
+        {
+            EntityDestroying(this, entity);
+        }
+        finally
+        {
+            _notifyingLifecycle = false;
+        }
+    }
+
+    private void NotifyComponentRemoving(Entity entity, Type componentType)
+    {
+        _notifyingLifecycle = true;
+        try
+        {
+            ComponentRemoving(this, entity, componentType);
+        }
+        finally
+        {
+            _notifyingLifecycle = false;
+        }
+    }
+
+    private static void IgnoreEntityDestroying(World world, Entity entity)
+    {
+    }
+
+    private static void IgnoreComponentRemoving(World world, Entity entity, Type componentType)
+    {
+    }
+
+    private void EnsureStructuralChangesAllowed()
+    {
+        if (_notifyingLifecycle)
+        {
+            throw new InvalidOperationException(
+                "ECS structure cannot be changed from an entity or component lifecycle handler.");
         }
     }
 

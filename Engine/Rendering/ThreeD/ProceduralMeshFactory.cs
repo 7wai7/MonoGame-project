@@ -4,12 +4,11 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace MonoGame_project.Engine.Rendering.ThreeD;
 
-/// <summary>Creates simple meshes without Content Pipeline assets.</summary>
+/// <summary>Creates CPU-side geometry without Content Pipeline or GPU access.</summary>
 public static class ProceduralMeshFactory
 {
-    public static Mesh CreateBox(GraphicsDevice graphicsDevice, Vector3 size)
+    public static MeshData CreateBox(Vector3 size)
     {
-        ArgumentNullException.ThrowIfNull(graphicsDevice);
         if (size.X <= 0f || size.Y <= 0f || size.Z <= 0f)
         {
             throw new ArgumentOutOfRangeException(nameof(size), "Every box dimension must be positive.");
@@ -87,7 +86,7 @@ public static class ProceduralMeshFactory
             new Vector3(-half.X, -half.Y, -half.Z),
             Vector3.Down);
 
-        return new Mesh(graphicsDevice, vertices, indices);
+        return new MeshData(vertices, indices);
     }
 
     private static void AddFace(

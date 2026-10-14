@@ -3,7 +3,11 @@ using MonoGame_project.Ecs;
 
 namespace MonoGame_project.Engine.Rendering.ThreeD;
 
-/// <summary>Position, rotation and scale of an entity in 3D space.</summary>
+/// <summary>
+/// Position, rotation and render scale of an entity in 3D space.
+/// For a future physics entity, the physics system owns Position and Rotation;
+/// Scale remains a rendering value and does not resize a collider automatically.
+/// </summary>
 public struct Transform3D : IComponent
 {
     public Transform3D(Vector3 position)

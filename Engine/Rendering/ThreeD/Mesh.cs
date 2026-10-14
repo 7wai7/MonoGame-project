@@ -10,43 +10,27 @@ public sealed class Mesh : IDisposable
     private readonly IndexBuffer _indexBuffer;
     private bool _disposed;
 
-    public Mesh(
-        GraphicsDevice graphicsDevice,
-        VertexPositionNormalTexture[] vertices,
-        int[] indices)
+    public Mesh(GraphicsDevice graphicsDevice, MeshData data)
     {
         ArgumentNullException.ThrowIfNull(graphicsDevice);
-        ArgumentNullException.ThrowIfNull(vertices);
-        ArgumentNullException.ThrowIfNull(indices);
+        ArgumentNullException.ThrowIfNull(data);
 
-        if (vertices.Length == 0)
-        {
-            throw new ArgumentException("A mesh must contain at least one vertex.", nameof(vertices));
-        }
-
-        if (indices.Length == 0 || indices.Length % 3 != 0)
-        {
-            throw new ArgumentException(
-                "A triangle-list mesh must contain a non-zero multiple of three indices.",
-                nameof(indices));
-        }
-
-        VertexCount = vertices.Length;
-        PrimitiveCount = indices.Length / 3;
+        VertexCount = data.VertexCount;
+        PrimitiveCount = data.PrimitiveCount;
 
         _vertexBuffer = new VertexBuffer(
             graphicsDevice,
             typeof(VertexPositionNormalTexture),
-            vertices.Length,
+            data.VertexCount,
             BufferUsage.WriteOnly);
-        _vertexBuffer.SetData(vertices);
+        _vertexBuffer.SetData(data.VertexArray);
 
         _indexBuffer = new IndexBuffer(
             graphicsDevice,
             IndexElementSize.ThirtyTwoBits,
-            indices.Length,
+            data.IndexCount,
             BufferUsage.WriteOnly);
-        _indexBuffer.SetData(indices);
+        _indexBuffer.SetData(data.IndexArray);
     }
 
     public int VertexCount { get; }
