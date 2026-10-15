@@ -1,5 +1,10 @@
 # Architecture
 
+Detailed Ukrainian diagrams and step-by-step explanations are available in the
+[visual architecture guide](diagrams/README.md). It covers the engine lifecycle,
+main loop, ECS storage and queries, Jitter synchronization, body lifecycle, and
+render interpolation.
+
 `MainGame` is only the MonoGame/DesktopGL host. It configures the window and
 forwards lifecycle calls to `GameEngine`.
 
@@ -137,11 +142,10 @@ foreach (var collision in collisions.Started)
 ```
 
 Queued commands run immediately before the next Jitter step. A kinematic body
-stops when a fixed tick has no new target command. A fixed-update system that
-creates kinematic targets should run before `PhysicsSystem`; a
-system that consumes `PhysicsCollisionEvents` should run after it. The bootstrap
-scene currently uses order `-100` for test motion, `0` for physics, `1000` for
-mesh rendering, and `1100` for collider debug rendering.
+stops when a fixed tick has no new target command. A future gameplay
+fixed-update system that creates kinematic targets should run before
+`PhysicsSystem`; a system that consumes `PhysicsCollisionEvents` should run
+after it. Rendering systems run in the separate Draw phase.
 
 Removing `PhysicsBody3D`, `BoxCollider3D`, `Transform3D`, or the whole entity
 removes its native body synchronously through the ECS lifecycle notification.
