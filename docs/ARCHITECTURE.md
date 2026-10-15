@@ -49,8 +49,8 @@ Resources are world-scoped non-component services or state. Register them with
 notifications. They run before ECS data is deleted, so a subscriber can still
 read the entity and component being removed. A lifecycle handler may clean up
 external resources, but it must not make another structural ECS change. This is
-the hook the future physics system will use to remove a Jitter body when its
-`PhysicsBody` component or owning entity is removed.
+the hook `PhysicsSystem` uses to remove a Jitter body immediately when its
+`PhysicsBody3D`, collider, transform, or owning entity is removed.
 
 ## 3D rendering
 
@@ -65,20 +65,89 @@ to GPU vertex/index buffers and owns only those GPU resources. `MeshData` is a
 general rendering type; physics must not depend on it. A collider may be built
 from the same source geometry through a separate converter when that is useful.
 
-## Physics integration contract
+## Physics
 
-Jitter has not been added yet. When it is integrated, entities with a physics
-body will follow these ownership rules:
+The engine uses Jitter 2 behind an engine-owned boundary. Gameplay and rendering
+code use MonoGame types and ECS entities; native `RigidBody`, Jitter math types,
+and the Jitter `World` remain private to `PhysicsSimulation`.
 
-- dynamic bodies receive forces, impulses, or velocities through the physics
-  API;
-- kinematic bodies receive a target pose or velocity through the physics API;
-- static bodies keep their initial pose and move only through an explicit rare
-  reposition/teleport operation;
-- after each fixed physics step, the physics system writes body position and
-  rotation to `Transform3D`;
-- `Transform3D.Scale` is visual and does not resize a physics shape.
+A physical box requires three components:
 
-Game systems must not write `Transform3D.Position` or `Rotation` directly for an
-entity that has a physics body. Terrain-specific height, voxel, or density data
-will be introduced with the terrain feature rather than in the general renderer.
+```csharp
+var cube = World.CreateEntity();
+World.Add(cube, new Transform3D(new Vector3(0f, 4f, 0f)));
+World.Add(cube, new PhysicsBody3D(PhysicsMotionType.Dynamic, mass: 1f));
+World.Add(cube, new BoxCollider3D(Vector3.One));
+```
+
+The physics files have these responsibilities:
+
+- `PhysicsBody3D` stores engine-facing body settings: motion type, mass,
+  friction, restitution, and gravity participation.
+- `BoxCollider3D` stores the collision box size. More collider component types
+  can be added later without changing `MeshData`.
+- `PhysicsPose3D` is internal runtime interpolation state maintained
+  automatically by the physics system. Gameplay code does not add or edit it.
+  The `PhysicsSystem` automatically adds it to every entity with a physical body
+  and removes it itself.
+- `PhysicsSimulation` owns the Jitter world, native bodies, entity-to-body
+  mapping, collision callbacks, and MonoGame/Jitter type conversion.
+- `PhysicsSystem` creates and removes native bodies, executes commands, steps
+  Jitter once per fixed tick, publishes collision changes, and copies resulting
+  poses back to ECS.
+- `PhysicsCommands` is the public queue for forces, impulses, velocity changes,
+  teleports, and motion-type changes.
+- `PhysicsCollisionEvents` exposes collisions started or ended by the most
+  recent fixed step.
+- `PhysicsDebugRenderSystem` optionally draws box colliders as green wireframes.
+
+### Pose ownership
+
+- A dynamic body's pose is controlled by Jitter. Move it with a force, impulse,
+  or velocity command.
+- A kinematic body's pose is controlled with
+  `PhysicsCommands.SetKinematicTarget`. The physics system converts the target
+  into linear and angular velocity before the Jitter step, so it still
+  interacts correctly with dynamic bodies.
+- A static body keeps its initial pose. Use an explicit `Teleport` command for
+  a rare reposition rather than editing `Transform3D`.
+- After every fixed step, physics writes position and rotation to `Transform3D`.
+  Rendering interpolates the previous and current `PhysicsPose3D`, which keeps
+  movement smooth when render FPS differs from the fixed 60 Hz simulation.
+- `Transform3D.Scale` is visual only. Collider dimensions come from the collider
+  component and do not silently change with the mesh scale.
+
+Therefore gameplay systems must not directly edit `Transform3D.Position` or
+`Rotation` on an entity with `PhysicsBody3D`.
+
+### Commands and collisions
+
+Retrieve the scene resources from `World` inside a system:
+
+```csharp
+var commands = world.GetResource<PhysicsCommands>();
+commands.ApplyImpulse(cube, new Vector3(0f, 5f, 0f));
+commands.SetKinematicTarget(platform, targetPosition, targetRotation);
+
+var collisions = world.GetResource<PhysicsCollisionEvents>();
+foreach (var collision in collisions.Started)
+{
+    // React to a collision that began during this fixed tick.
+}
+```
+
+Queued commands run immediately before the next Jitter step. A kinematic body
+stops when a fixed tick has no new target command. A fixed-update system that
+creates kinematic targets should run before `PhysicsSystem`; a
+system that consumes `PhysicsCollisionEvents` should run after it. The bootstrap
+scene currently uses order `-100` for test motion, `0` for physics, `1000` for
+mesh rendering, and `1100` for collider debug rendering.
+
+Removing `PhysicsBody3D`, `BoxCollider3D`, `Transform3D`, or the whole entity
+removes its native body synchronously through the ECS lifecycle notification.
+If that body was touching another body, an ended-collision event is generated
+because Jitter itself does not emit one for explicit body removal.
+
+`MeshData` remains rendering geometry, not physics geometry. Terrain-specific
+height, voxel, or density data and matching terrain colliders will be introduced
+with the terrain feature rather than coupled to the general mesh renderer.

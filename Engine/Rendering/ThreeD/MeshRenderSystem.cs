@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGame_project.Ecs;
+using MonoGame_project.Engine.Physics.Components;
 using MonoGame_project.Engine.Systems;
 
 namespace MonoGame_project.Engine.Rendering.ThreeD;
@@ -70,6 +71,13 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
             }
 
             _effect.World = transform.WorldMatrix;
+            if (world.TryGet<PhysicsPose3D>(entity, out var physicsPose) && physicsPose.IsActive)
+            {
+                _effect.World = physicsPose.CreateWorldMatrix(
+                    transform.Scale,
+                    MathHelper.Clamp(context.InterpolationAlpha, 0f, 1f));
+            }
+
             _effect.DiffuseColor = renderer.Tint.ToVector3();
             _effect.Alpha = renderer.Tint.A / 255f;
 
