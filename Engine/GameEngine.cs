@@ -98,6 +98,7 @@ public sealed class GameEngine : IDisposable
     {
         EnsureInitialized();
         ApplyPendingScene();
+        _context!.Input.BeginFrame();
 
         var elapsed = gameTime.ElapsedGameTime;
         if (elapsed < TimeSpan.Zero)
@@ -161,6 +162,11 @@ public sealed class GameEngine : IDisposable
         _pendingScene?.Dispose();
         _pendingScene = null!;
         _activeScene.Dispose();
+        if (_initialized)
+        {
+            _context.InputContexts.Clear();
+        }
+
         _context = null!;
         _initialized = false;
         _disposed = true;
@@ -177,6 +183,7 @@ public sealed class GameEngine : IDisposable
         _pendingScene = null!;
 
         _activeScene.Dispose();
+        _context!.InputContexts.Clear();
         _activeScene = nextScene;
         _activeScene.Initialize(_context!);
         if (_contentLoaded)

@@ -57,12 +57,49 @@ external resources, but it must not make another structural ECS change. This is
 the hook `PhysicsSystem` uses to remove a Jitter body immediately when its
 `PhysicsBody3D`, transform, or owning entity is removed.
 
+## Input routing
+
+`InputService` reads one keyboard, mouse, and gamepad snapshot before scene
+systems update. It also owns the platform details of relative mouse input:
+focus events, cursor visibility, SDL relative-mouse mode, and mouse delta. It
+does not decide which gameplay or UI feature should receive that input.
+
+`InputContextStack` makes that routing decision. An `InputContext` is only an
+immutable description of an input layer; it is not a system and does not own
+the cursor. The context at the top of the stack determines whether the cursor
+is `Free` or `Relative`. A context with `BlocksLowerInput` also prevents systems
+associated with contexts below it from acting on the same snapshot. Systems
+call `CanReceiveInput(...)` before interpreting input for their context.
+
+The bootstrap scene resets the stack to `InspectViewport`. A future pause menu
+can temporarily override it without coordinating directly with the debug
+camera:
+
+```csharp
+context.InputContexts.Push(InputContexts.PauseMenu); // Free cursor; camera blocked.
+context.InputContexts.Pop(InputContexts.PauseMenu);  // Inspect viewport is active again.
+```
+
+Returning to a relative-mouse context does not capture the cursor immediately.
+The player must left-click inside the focused game window, which prevents scene
+or menu transitions from unexpectedly stealing mouse control. Scene changes
+clear the entire stack before the new scene initializes its root context.
+
 ## 3D rendering
 
 An active camera entity has `Transform3D` and `Camera3D`. A renderable entity
 has `Transform3D` and `MeshRenderer`. `MeshRenderSystem` finds the camera,
 creates its view/projection matrices, then draws every visible mesh using depth
 testing and `BasicEffect` lighting.
+
+`InspectCameraController3D` is an opt-in free-camera controller for examining a
+scene and is independent from future character or vehicle controls. While it is
+enabled on the active camera, the mouse controls its view, WASD moves
+horizontally, and Q/E moves down or up. A left click inside the game window
+activates this input and captures the cursor; losing focus releases it and
+requires another click.
+`InspectCameraControlSystem` updates the camera during the variable-rate update;
+it has no physics body, gravity, or collision response.
 
 `MeshData` contains CPU-side vertices and indices and does not need a
 `GraphicsDevice`. `ProceduralMeshFactory` creates box, sphere, cylinder,

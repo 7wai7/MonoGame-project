@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Configuration;
 using MonoGame_project.Engine;
+using MonoGame_project.Engine.Input;
 using MonoGame_project.Game;
 
 namespace MonoGame_project;
@@ -11,12 +12,16 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 {
     private readonly GameSettings _settings = GameSettings.Default;
     private readonly GraphicsDeviceManager _graphics;
+    private readonly InputService _input;
+    private readonly InputContextStack _inputContexts;
     private readonly GameEngine _engine;
     private SpriteBatch _spriteBatch = null!;
 
     public MainGame()
     {
         _graphics = new GraphicsDeviceManager(this);
+        _input = new InputService(this);
+        _inputContexts = new InputContextStack(_input);
         _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
         _graphics.PreferredBackBufferHeight = _settings.BackBufferHeight;
         _graphics.SynchronizeWithVerticalRetrace = _settings.VSync;
@@ -40,7 +45,9 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
             GraphicsDevice,
             Content,
             Window,
-            Services);
+            Services,
+            _input,
+            _inputContexts);
 
         _engine.Initialize(context);
 
@@ -57,13 +64,14 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     protected override void Update(GameTime gameTime)
     {
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
-            Keyboard.GetState().IsKeyDown(Keys.Escape))
+        _engine.Update(gameTime);
+
+        if (_input.CurrentGamePad.Buttons.Back == ButtonState.Pressed ||
+            _input.CurrentKeyboard.IsKeyDown(Keys.Escape))
         {
             Exit();
         }
 
-        _engine.Update(gameTime);
         base.Update(gameTime);
     }
 
@@ -89,6 +97,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         if (disposing)
         {
             _engine.Dispose();
+            _input.Dispose();
         }
 
         base.Dispose(disposing);

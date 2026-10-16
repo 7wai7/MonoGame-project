@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using MonoGame_project.Ecs;
 using MonoGame_project.Engine;
+using MonoGame_project.Engine.Input;
 using MonoGame_project.Engine.Physics;
 using MonoGame_project.Engine.Physics.Components;
 using MonoGame_project.Engine.Rendering.ThreeD;
@@ -27,6 +28,7 @@ public sealed class BootstrapScene : GameScene
 
     protected override void ConfigureSystems(SystemScheduler systems)
     {
+        systems.Add(new InspectCameraControlSystem(), order: -1_000);
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         systems.Add(new PhysicsSystem(), order: 0);
         systems.Add(new MeshRenderSystem(), order: 1_000);
@@ -35,9 +37,12 @@ public sealed class BootstrapScene : GameScene
 
     protected override void OnInitialize(EngineContext context)
     {
+        context.InputContexts.Reset(InputContexts.InspectViewport);
+
         var camera = World.CreateEntity();
         World.Add(camera, new Transform3D(new Vector3(10f, 7f, 10f)));
         World.Add(camera, new Camera3D(new Vector3(0f, 1f, 0f)));
+        World.Add(camera, new InspectCameraController3D());
 
         _platform = World.CreateEntity();
         World.Add(_platform, new Transform3D(new Vector3(0f, -0.25f, 0f)));
