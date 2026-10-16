@@ -45,7 +45,7 @@ flowchart TD
     F --> G["7. PhysicsCollisionEvents.Publish"]
     G --> H["8. SynchronizeTransforms"]
 
-    B -. "створює / оновлює / перебудовує" .-> Native["Jitter RigidBody"]
+    B -. "створює body / оновлює shape" .-> Native["Jitter RigidBody"]
     E -. "force / impulse / teleport / target" .-> Native
     F --> Native
     Native -. "нова pose" .-> H
@@ -72,16 +72,19 @@ PhysicsSystem знаходить усі Entity з PhysicsBody3D і переві�
 мають:
 
 - Transform3D з початковою або останньою фізичною позою;
-- підтримуваний collider, зараз BoxCollider3D.
+- рівно один підтримуваний collider: BoxCollider3D, SphereCollider3D,
+  CylinderCollider3D, CapsuleCollider3D або ConeCollider3D.
 
-Потім PhysicsSimulation.EnsureBoxBody:
+Потім PhysicsSimulation.EnsureBody:
 
 - створює відсутній RigidBody;
-- перебудовує його, якщо змінився розмір collider;
+- змінює параметри наявного Jitter shape, якщо змінився його розмір;
+- замінює лише shape у тому самому RigidBody, якщо змінився тип collider;
 - інакше оновлює friction, restitution, gravity, mass і motion type.
 
-Після створення або перебудови PhysicsPose3D скидається до поточної пози, щоб
-рендерер не інтерполював від старого, вже неактуального стану.
+PhysicsPose3D скидається до поточної пози лише після створення нового RigidBody.
+Зміна shape зберігає і RigidBody, і його pose, тому interpolation не потрібно
+починати заново.
 
 ### 3. CapturePreviousPoses
 

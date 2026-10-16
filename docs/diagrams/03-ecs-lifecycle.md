@@ -319,9 +319,10 @@ DestroyEntity має навмисно строгий порядок:
 5. Generation збільшується.
 6. Id додається до freeIds.
 
-PhysicsSystem підписаний на ComponentRemoving. Якщо видаляється Transform3D,
-PhysicsBody3D або BoxCollider3D, він одразу видаляє відповідний Jitter body,
-поки ще має достатньо контексту.
+PhysicsSystem підписаний на ComponentRemoving. Якщо видаляється Transform3D або
+PhysicsBody3D, він одразу видаляє відповідний Jitter body, поки ще має достатньо
+контексту. Видалення collider синхронізується перед наступним physics step, щоб
+можна було замінити один тип collider іншим без видалення самого RigidBody.
 
 Всередині lifecycle callback заборонено робити іншу структурну зміну. Це
 запобігає рекурсивному видаленню та частково зміненому World.

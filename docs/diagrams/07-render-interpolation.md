@@ -178,20 +178,22 @@ flowchart LR
 ~~~
 
 - MeshData можна створювати без GraphicsDevice.
+- ProceduralMeshFactory створює box, sphere, cylinder, capsule і cone. Кількість
+  сегментів curved shapes задається аргументами фабричних методів.
 - Mesh завантажує дані у GPU buffers і володіє ними.
 - MeshRenderer пов'язує готовий Mesh з Entity та її tint.
 - UnloadContent видаляє MeshRenderer з Entity, а потім Dispose звільняє GPU
   buffers.
 
-Фізичний BoxCollider3D не залежить від MeshData або Mesh. Візуальна та collision
-geometry можуть збігатися, але це різні відповідальності.
+Фізичні collider-компоненти не залежать від MeshData або Mesh. Візуальна та
+collision geometry можуть збігатися, але це різні відповідальності.
 
 ## Debug rendering
 
-PhysicsDebugRenderSystem проходить Entity з Transform3D + BoxCollider3D,
-будує вісім кутів коробки й малює дванадцять зелених ребер. Для фізичних Entity
-він використовує ту саму PhysicsPose3D interpolation, тому wireframe і mesh
-залишаються візуально синхронними.
+PhysicsDebugRenderSystem окремо проходить Entity з кожним підтримуваним
+primitive collider і будує зелений wireframe для box, sphere, cylinder,
+capsule або cone. Для фізичних Entity він використовує ту саму PhysicsPose3D
+interpolation, тому wireframe і mesh залишаються візуально синхронними.
 
 ## Відповідні файли
 
@@ -202,3 +204,4 @@ PhysicsDebugRenderSystem проходить Entity з Transform3D + BoxCollider3
 - [Camera3D.cs](../../Engine/Rendering/ThreeD/Camera3D.cs)
 - [Mesh.cs](../../Engine/Rendering/ThreeD/Mesh.cs)
 - [MeshData.cs](../../Engine/Rendering/ThreeD/MeshData.cs)
+- [ProceduralMeshFactory.cs](../../Engine/Rendering/ThreeD/ProceduralMeshFactory.cs)

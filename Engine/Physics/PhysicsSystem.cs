@@ -12,7 +12,7 @@ namespace MonoGame_project.Engine.Physics;
 public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
 {
     private readonly PhysicsSettings _settings;
-    private readonly List<Entity> _bodyCandidates = [];
+    private readonly List<BodyCandidate> _bodyCandidates = [];
     private readonly HashSet<Entity> _pendingPoseRemoval = [];
     private PhysicsSimulation _simulation = null!;
     private PhysicsCommands _commands = null!;
@@ -88,36 +88,95 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
                     $"{entity} has PhysicsBody3D but does not have Transform3D.");
             }
 
-            if (!World.Has<BoxCollider3D>(entity))
-            {
-                throw new InvalidOperationException(
-                    $"{entity} has PhysicsBody3D but does not have a supported collider.");
-            }
-
-            _bodyCandidates.Add(entity);
-        }
-
-        foreach (var entity in _bodyCandidates)
-        {
             var transform = World.Get<Transform3D>(entity);
             var body = World.Get<PhysicsBody3D>(entity);
-            var collider = World.Get<BoxCollider3D>(entity);
-            var change = _simulation.EnsureBoxBody(entity, transform, body, collider);
-            if (change == PhysicsBodyChange.None)
+            var collider = GetColliderDefinition(entity);
+            _bodyCandidates.Add(new BodyCandidate(entity, transform, body, collider));
+        }
+
+        foreach (var candidate in _bodyCandidates)
+        {
+            var change = _simulation.EnsureBody(
+                candidate.Entity,
+                candidate.Transform,
+                candidate.Body,
+                candidate.Collider);
+            if (change != PhysicsBodyChange.Created)
             {
                 continue;
             }
 
-            if (World.Has<PhysicsPose3D>(entity))
+            if (World.Has<PhysicsPose3D>(candidate.Entity))
             {
-                ref var pose = ref World.Get<PhysicsPose3D>(entity);
-                pose = new PhysicsPose3D(transform.Position, transform.Rotation);
+                ref var pose = ref World.Get<PhysicsPose3D>(candidate.Entity);
+                pose = new PhysicsPose3D(
+                    candidate.Transform.Position,
+                    candidate.Transform.Rotation);
             }
             else
             {
-                World.Add(entity, new PhysicsPose3D(transform.Position, transform.Rotation));
+                World.Add(
+                    candidate.Entity,
+                    new PhysicsPose3D(
+                        candidate.Transform.Position,
+                        candidate.Transform.Rotation));
             }
         }
+    }
+
+    private PhysicsColliderDefinition GetColliderDefinition(Entity entity)
+    {
+        var colliderCount = 0;
+        var definition = default(PhysicsColliderDefinition);
+
+        if (World.TryGet<BoxCollider3D>(entity, out var box))
+        {
+            box.Validate();
+            definition = PhysicsColliderDefinition.From(box);
+            colliderCount++;
+        }
+
+        if (World.TryGet<SphereCollider3D>(entity, out var sphere))
+        {
+            sphere.Validate();
+            definition = PhysicsColliderDefinition.From(sphere);
+            colliderCount++;
+        }
+
+        if (World.TryGet<CylinderCollider3D>(entity, out var cylinder))
+        {
+            cylinder.Validate();
+            definition = PhysicsColliderDefinition.From(cylinder);
+            colliderCount++;
+        }
+
+        if (World.TryGet<CapsuleCollider3D>(entity, out var capsule))
+        {
+            capsule.Validate();
+            definition = PhysicsColliderDefinition.From(capsule);
+            colliderCount++;
+        }
+
+        if (World.TryGet<ConeCollider3D>(entity, out var cone))
+        {
+            cone.Validate();
+            definition = PhysicsColliderDefinition.From(cone);
+            colliderCount++;
+        }
+
+        if (colliderCount == 1)
+        {
+            return definition;
+        }
+
+        RemovePhysicsBody(World, entity);
+        var reason = colliderCount == 0
+            ? "does not have a supported collider"
+            : "has more than one collider component";
+        throw new InvalidOperationException(
+            $"{entity} has PhysicsBody3D but {reason}. " +
+            "Add exactly one of BoxCollider3D, SphereCollider3D, " +
+            "CylinderCollider3D, CapsuleCollider3D, or ConeCollider3D.");
     }
 
     private void CapturePreviousPoses()
@@ -252,12 +311,16 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
     private void OnComponentRemoving(World world, Entity entity, Type componentType)
     {
         if (componentType != typeof(PhysicsBody3D) &&
-            componentType != typeof(BoxCollider3D) &&
             componentType != typeof(Transform3D))
         {
             return;
         }
 
+        RemovePhysicsBody(world, entity);
+    }
+
+    private void RemovePhysicsBody(World world, Entity entity)
+    {
         _simulation.RemoveBody(entity);
         if (world.Has<PhysicsPose3D>(entity))
         {
@@ -279,4 +342,10 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
 
         _pendingPoseRemoval.Clear();
     }
+
+    private readonly record struct BodyCandidate(
+        Entity Entity,
+        Transform3D Transform,
+        PhysicsBody3D Body,
+        PhysicsColliderDefinition Collider);
 }

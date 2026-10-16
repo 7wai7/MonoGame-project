@@ -51,36 +51,50 @@ public sealed class PhysicsSimulation : IDisposable
     // -------------------------------------------------------------------------
     // ECS body synchronization and lifetime
     //
-    // EnsureBoxBody is the main synchronization entry point. It creates a
-    // missing body, rebuilds it when its shape changes, or updates its settings.
+    // EnsureBody is the main synchronization entry point. It creates a missing
+    // body, mutates or replaces its shape, and updates its settings. Shape
+    // changes deliberately keep the same RigidBody instance.
     // -------------------------------------------------------------------------
 
-    internal PhysicsBodyChange EnsureBoxBody(
+    internal PhysicsBodyChange EnsureBody(
         Entity entity,
         in Transform3D transform,
         in PhysicsBody3D settings,
-        in BoxCollider3D collider)
+        in PhysicsColliderDefinition collider)
     {
         ThrowIfDisposed();
         settings.Validate();
-        collider.Validate();
         ValidatePose(transform.Position, transform.Rotation);
 
         if (!_bodies.TryGetValue(entity, out var entry))
         {
-            CreateBoxBody(entity, transform.Position, transform.Rotation, settings, collider);
+            CreateBody(entity, transform.Position, transform.Rotation, settings, collider);
             return PhysicsBodyChange.Created;
         }
 
-        if (entry.ColliderSize != collider.Size)
+        var shapeChanged = false;
+        if (!ShapeMatches(entry.Shape, collider))
         {
-            RebuildBoxBody(entity, entry, settings, collider);
-            return PhysicsBodyChange.Rebuilt;
+            ReplaceShape(entity, entry, CreateShape(collider));
+            shapeChanged = true;
+        }
+        else
+        {
+            shapeChanged = UpdateShapeGeometry(entry.Shape, collider);
+            if (shapeChanged)
+            {
+                RemoveActiveCollisions(entity);
+            }
         }
 
-        ApplySettings(entry.Body, settings, entry.Settings);
+        ApplySettings(entry.Body, settings, entry.Settings, forceMassUpdate: shapeChanged);
+        if (shapeChanged)
+        {
+            RefreshShapeInWorld(entry.Body);
+        }
+
         entry.Settings = settings;
-        return PhysicsBodyChange.None;
+        return shapeChanged ? PhysicsBodyChange.ShapeChanged : PhysicsBodyChange.None;
     }
 
     public bool Contains(Entity entity)
@@ -195,8 +209,10 @@ public sealed class PhysicsSimulation : IDisposable
             return false;
         }
 
-        entry.Body.MotionType = ToJitterMotionType(motionType);
-        entry.Settings.MotionType = motionType;
+        var settings = entry.Settings;
+        settings.MotionType = motionType;
+        ApplySettings(entry.Body, settings, entry.Settings);
+        entry.Settings = settings;
         return true;
     }
 
@@ -303,22 +319,23 @@ public sealed class PhysicsSimulation : IDisposable
     // Native Jitter body creation
     // -------------------------------------------------------------------------
 
-    private void CreateBoxBody(
+    private void CreateBody(
         Entity entity,
         in Vector3 position,
         in Quaternion rotation,
         in PhysicsBody3D settings,
-        in BoxCollider3D collider)
+        in PhysicsColliderDefinition collider)
     {
         var body = _nativeWorld.CreateRigidBody();
+        var shape = CreateShape(collider);
         try
         {
             body.Position = PhysicsConvert.ToJitter(position);
             body.Orientation = PhysicsConvert.ToJitter(Quaternion.Normalize(rotation));
-            body.AddShape(new BoxShape(collider.Size.X, collider.Size.Y, collider.Size.Z));
+            body.AddShape(shape);
             ApplySettings(body, settings, previousSettings: default, forceMassUpdate: true);
 
-            _bodies.Add(entity, new BodyEntry(body, settings, collider.Size));
+            _bodies.Add(entity, new BodyEntry(body, shape, settings));
             _entitiesByBody.Add(body, entity);
             body.BeginCollide += OnBeginCollide;
             body.EndCollide += OnEndCollide;
@@ -396,38 +413,135 @@ public sealed class PhysicsSimulation : IDisposable
     }
 
     // -------------------------------------------------------------------------
-    // Body reconstruction and mutable settings
+    // Collider geometry and mutable body settings
     //
-    // Jitter shapes are rebuilt when collider geometry changes. Position,
-    // rotation, and velocities are preserved across the replacement.
+    // Primitive dimensions are mutable in Jitter. When the collider type
+    // changes, only the attached shape is replaced. The RigidBody itself,
+    // together with its velocity, identity, and constraints, stays alive.
     // -------------------------------------------------------------------------
 
-    private void RebuildBoxBody(
+    private void ReplaceShape(
         Entity entity,
-        BodyEntry oldEntry,
-        in PhysicsBody3D settings,
-        in BoxCollider3D collider)
+        BodyEntry entry,
+        RigidBodyShape replacement)
     {
-        var position = PhysicsConvert.ToMonoGame(oldEntry.Body.Position);
-        var rotation = PhysicsConvert.ToMonoGame(oldEntry.Body.Orientation);
-        var velocity = Vector3.Zero;
-        var angularVelocity = Vector3.Zero;
-
-        if (oldEntry.Body.MotionType != MotionType.Static)
+        RemoveActiveCollisions(entity);
+        entry.Body.RemoveShape(entry.Shape, MassInertiaUpdateMode.Preserve);
+        try
         {
-            velocity = PhysicsConvert.ToMonoGame(oldEntry.Body.Velocity);
-            angularVelocity = PhysicsConvert.ToMonoGame(oldEntry.Body.AngularVelocity);
+            entry.Body.AddShape(replacement, MassInertiaUpdateMode.Preserve);
+        }
+        catch
+        {
+            entry.Body.AddShape(entry.Shape, MassInertiaUpdateMode.Preserve);
+            throw;
         }
 
-        RemoveBody(entity);
-        CreateBoxBody(entity, position, rotation, settings, collider);
+        entry.Shape = replacement;
+    }
 
-        if (ToJitterMotionType(settings.MotionType) != MotionType.Static &&
-            _bodies.TryGetValue(entity, out var newEntry))
+    private static bool ShapeMatches(
+        RigidBodyShape shape,
+        in PhysicsColliderDefinition collider) =>
+        collider.Kind switch
         {
-            newEntry.Body.Velocity = PhysicsConvert.ToJitter(velocity);
-            newEntry.Body.AngularVelocity = PhysicsConvert.ToJitter(angularVelocity);
+            PhysicsColliderKind.Box => shape is BoxShape,
+            PhysicsColliderKind.Sphere => shape is SphereShape,
+            PhysicsColliderKind.Cylinder => shape is CylinderShape,
+            PhysicsColliderKind.Capsule => shape is CapsuleShape,
+            PhysicsColliderKind.Cone => shape is ConeShape,
+            _ => throw new ArgumentOutOfRangeException(nameof(collider))
+        };
+
+    private static bool UpdateShapeGeometry(
+        RigidBodyShape shape,
+        in PhysicsColliderDefinition collider)
+    {
+        switch (shape)
+        {
+            case BoxShape box:
+            {
+                var currentSize = PhysicsConvert.ToMonoGame(box.Size);
+                if (currentSize == collider.Size)
+                {
+                    return false;
+                }
+
+                box.Size = PhysicsConvert.ToJitter(collider.Size);
+                return true;
+            }
+
+            case SphereShape sphere:
+                if (sphere.Radius == collider.Radius)
+                {
+                    return false;
+                }
+
+                sphere.Radius = collider.Radius;
+                return true;
+
+            case CylinderShape cylinder:
+                if (cylinder.Radius == collider.Radius &&
+                    cylinder.Height == collider.Height)
+                {
+                    return false;
+                }
+
+                cylinder.Radius = collider.Radius;
+                cylinder.Height = collider.Height;
+                return true;
+
+            case CapsuleShape capsule:
+                if (capsule.Radius == collider.Radius &&
+                    capsule.Length == collider.Length)
+                {
+                    return false;
+                }
+
+                capsule.Radius = collider.Radius;
+                capsule.Length = collider.Length;
+                return true;
+
+            case ConeShape cone:
+                if (cone.Radius == collider.Radius && cone.Height == collider.Height)
+                {
+                    return false;
+                }
+
+                cone.Radius = collider.Radius;
+                cone.Height = collider.Height;
+                return true;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(collider));
         }
+    }
+
+    private static RigidBodyShape CreateShape(in PhysicsColliderDefinition collider) =>
+        collider.Kind switch
+        {
+            PhysicsColliderKind.Box => new BoxShape(
+                collider.Size.X,
+                collider.Size.Y,
+                collider.Size.Z),
+            PhysicsColliderKind.Sphere => new SphereShape(collider.Radius),
+            PhysicsColliderKind.Cylinder => new CylinderShape(
+                collider.Height,
+                collider.Radius),
+            PhysicsColliderKind.Capsule => new CapsuleShape(
+                collider.Radius,
+                collider.Length),
+            PhysicsColliderKind.Cone => new ConeShape(
+                collider.Radius,
+                collider.Height),
+            _ => throw new ArgumentOutOfRangeException(nameof(collider))
+        };
+
+    private static void RefreshShapeInWorld(RigidBody body)
+    {
+        // Assigning the same position asks Jitter to refresh broad-phase data,
+        // clear cached contacts, and wake affected bodies without replacing it.
+        body.Position = body.Position;
     }
 
     private static void ApplySettings(
@@ -448,7 +562,9 @@ public sealed class PhysicsSimulation : IDisposable
         body.AffectedByGravity = settings.AffectedByGravity;
 
         if (motionType == MotionType.Dynamic &&
-            (forceMassUpdate || settings.Mass != previousSettings.Mass))
+            (forceMassUpdate ||
+             previousSettings.MotionType != PhysicsMotionType.Dynamic ||
+             settings.Mass != previousSettings.Mass))
         {
             body.SetMassInertia(settings.Mass);
         }
@@ -551,16 +667,16 @@ public sealed class PhysicsSimulation : IDisposable
 
     private sealed class BodyEntry
     {
-        public BodyEntry(RigidBody body, PhysicsBody3D settings, Vector3 colliderSize)
+        public BodyEntry(RigidBody body, RigidBodyShape shape, PhysicsBody3D settings)
         {
             Body = body;
+            Shape = shape;
             Settings = settings;
-            ColliderSize = colliderSize;
         }
 
         public RigidBody Body { get; }
+        public RigidBodyShape Shape;
         public PhysicsBody3D Settings;
-        public Vector3 ColliderSize { get; }
     }
 
     private readonly record struct CollisionPair(Entity First, Entity Second)
@@ -578,11 +694,47 @@ public sealed class PhysicsSimulation : IDisposable
     }
 }
 
-// Describes what EnsureBoxBody changed so PhysicsSystem can reset interpolation
-// state only when a native body was created or replaced.
+// Describes what EnsureBody changed. Shape changes preserve the native body and
+// therefore do not require interpolation history to be reset.
 internal enum PhysicsBodyChange
 {
     None,
     Created,
-    Rebuilt
+    ShapeChanged
+}
+
+internal enum PhysicsColliderKind
+{
+    Box,
+    Sphere,
+    Cylinder,
+    Capsule,
+    Cone
+}
+
+/// <summary>
+/// A short-lived, engine-only description used to pass any supported ECS
+/// collider to PhysicsSimulation without exposing Jitter types to the ECS.
+/// </summary>
+internal readonly record struct PhysicsColliderDefinition(
+    PhysicsColliderKind Kind,
+    Vector3 Size,
+    float Radius,
+    float Height,
+    float Length)
+{
+    public static PhysicsColliderDefinition From(in BoxCollider3D collider) =>
+        new(PhysicsColliderKind.Box, collider.Size, 0f, 0f, 0f);
+
+    public static PhysicsColliderDefinition From(in SphereCollider3D collider) =>
+        new(PhysicsColliderKind.Sphere, Vector3.Zero, collider.Radius, 0f, 0f);
+
+    public static PhysicsColliderDefinition From(in CylinderCollider3D collider) =>
+        new(PhysicsColliderKind.Cylinder, Vector3.Zero, collider.Radius, collider.Height, 0f);
+
+    public static PhysicsColliderDefinition From(in CapsuleCollider3D collider) =>
+        new(PhysicsColliderKind.Capsule, Vector3.Zero, collider.Radius, 0f, collider.Length);
+
+    public static PhysicsColliderDefinition From(in ConeCollider3D collider) =>
+        new(PhysicsColliderKind.Cone, Vector3.Zero, collider.Radius, collider.Height, 0f);
 }

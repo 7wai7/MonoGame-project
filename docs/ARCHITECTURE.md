@@ -55,7 +55,7 @@ notifications. They run before ECS data is deleted, so a subscriber can still
 read the entity and component being removed. A lifecycle handler may clean up
 external resources, but it must not make another structural ECS change. This is
 the hook `PhysicsSystem` uses to remove a Jitter body immediately when its
-`PhysicsBody3D`, collider, transform, or owning entity is removed.
+`PhysicsBody3D`, transform, or owning entity is removed.
 
 ## 3D rendering
 
@@ -65,10 +65,12 @@ creates its view/projection matrices, then draws every visible mesh using depth
 testing and `BasicEffect` lighting.
 
 `MeshData` contains CPU-side vertices and indices and does not need a
-`GraphicsDevice`. `ProceduralMeshFactory` creates this data. `Mesh` uploads it
-to GPU vertex/index buffers and owns only those GPU resources. `MeshData` is a
-general rendering type; physics must not depend on it. A collider may be built
-from the same source geometry through a separate converter when that is useful.
+`GraphicsDevice`. `ProceduralMeshFactory` creates box, sphere, cylinder,
+capsule, and cone data. Its dimensions follow the matching collider semantics:
+cylinder/capsule/cone use local Y, capsule length excludes its hemispheres, and
+the cone origin matches Jitter's center of mass. `Mesh` uploads the result to GPU
+vertex/index buffers and owns only those GPU resources. `MeshData` is a general
+rendering type; physics must not depend on it.
 
 ## Physics
 
@@ -76,7 +78,8 @@ The engine uses Jitter 2 behind an engine-owned boundary. Gameplay and rendering
 code use MonoGame types and ECS entities; native `RigidBody`, Jitter math types,
 and the Jitter `World` remain private to `PhysicsSimulation`.
 
-A physical box requires three components:
+A physical entity requires `Transform3D`, `PhysicsBody3D`, and exactly one
+supported collider component. For example, a physical box is created like this:
 
 ```csharp
 var cube = World.CreateEntity();
@@ -89,8 +92,11 @@ The physics files have these responsibilities:
 
 - `PhysicsBody3D` stores engine-facing body settings: motion type, mass,
   friction, restitution, and gravity participation.
-- `BoxCollider3D` stores the collision box size. More collider component types
-  can be added later without changing `MeshData`.
+- Collider components describe one primitive shape: `BoxCollider3D`,
+  `SphereCollider3D`, `CylinderCollider3D`, `CapsuleCollider3D`, or
+  `ConeCollider3D`. Cylinder, capsule, and cone use their local Y axis. Capsule
+  `Length` is only its cylindrical section; total height is
+  `Length + 2 * Radius`.
 - `PhysicsPose3D` is internal runtime interpolation state maintained
   automatically by the physics system. Gameplay code does not add or edit it.
   The `PhysicsSystem` automatically adds it to every entity with a physical body
@@ -104,7 +110,14 @@ The physics files have these responsibilities:
   teleports, and motion-type changes.
 - `PhysicsCollisionEvents` exposes collisions started or ended by the most
   recent fixed step.
-- `PhysicsDebugRenderSystem` optionally draws box colliders as green wireframes.
+- `PhysicsDebugRenderSystem` optionally draws all supported colliders as green
+  wireframes.
+
+Collider dimensions can be edited at runtime. Primitive dimensions are updated
+on the existing Jitter shape. If the collider component type changes, the old
+shape is detached and the new shape is attached to the same `RigidBody`. The
+body identity, velocity, and constraints therefore remain intact; mass and
+inertia are recalculated for dynamic bodies.
 
 ### Pose ownership
 
@@ -147,10 +160,13 @@ fixed-update system that creates kinematic targets should run before
 `PhysicsSystem`; a system that consumes `PhysicsCollisionEvents` should run
 after it. Rendering systems run in the separate Draw phase.
 
-Removing `PhysicsBody3D`, `BoxCollider3D`, `Transform3D`, or the whole entity
-removes its native body synchronously through the ECS lifecycle notification.
-If that body was touching another body, an ended-collision event is generated
-because Jitter itself does not emit one for explicit body removal.
+Removing `PhysicsBody3D`, `Transform3D`, or the whole entity removes its native
+body synchronously through the ECS lifecycle notification. Collider removal is
+synchronized at the start of the next fixed tick, which allows gameplay to
+replace one collider component with another between ticks without destroying
+the body. At synchronization time, an entity with `PhysicsBody3D` must still
+have exactly one supported collider. If an explicitly removed body was touching
+another body, an ended-collision event is generated.
 
 `MeshData` remains rendering geometry, not physics geometry. Terrain-specific
 height, voxel, or density data and matching terrain colliders will be introduced
