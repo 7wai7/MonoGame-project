@@ -7,6 +7,7 @@ using MonoGame_project.Engine.Physics.Components;
 using MonoGame_project.Engine.Rendering.ThreeD;
 using MonoGame_project.Engine.Scenes;
 using MonoGame_project.Engine.Systems;
+using MonoGame_project.Game.UI;
 
 namespace MonoGame_project.Game;
 
@@ -28,6 +29,7 @@ public sealed class BootstrapScene : GameScene
 
     protected override void ConfigureSystems(SystemScheduler systems)
     {
+        systems.Add(new PauseMenuSystem(), order: -2_000);
         systems.Add(new InspectCameraControlSystem(), order: -1_000);
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         systems.Add(new PhysicsSystem(), order: 0);
@@ -38,6 +40,7 @@ public sealed class BootstrapScene : GameScene
     protected override void OnInitialize(EngineContext context)
     {
         context.InputContexts.Reset(InputContexts.InspectViewport);
+        World.SetResource(new GameUiTheme(context.GraphicsDevice));
 
         var camera = World.CreateEntity();
         World.Add(camera, new Transform3D(new Vector3(10f, 7f, 10f)));

@@ -13,6 +13,7 @@ public sealed class InputService : IDisposable
     private MouseMode _mouseMode;
     private bool _mouseCaptureActive;
     private bool _mouseVisibilityBeforeCapture;
+    private KeyboardState _previousHardwareKeyboard;
     private MouseState _previousHardwareMouse;
     private bool _hasHardwareMouseSnapshot;
     private bool _isFocused;
@@ -28,12 +29,18 @@ public sealed class InputService : IDisposable
     }
 
     public KeyboardState CurrentKeyboard { get; private set; }
+    public KeyboardState PreviousKeyboard { get; private set; }
     public GamePadState CurrentGamePad { get; private set; }
     public MouseState PreviousMouse { get; private set; }
     public MouseState CurrentMouse { get; private set; }
     public Point MouseDelta { get; private set; }
+    public bool HasActiveInput { get; private set; }
     internal bool IsRelativeMouseCaptured =>
         _mouseMode == MouseMode.Relative && _mouseCaptureActive;
+
+    /// <summary>True only on the frame when a key becomes pressed.</summary>
+    public bool WasKeyPressed(Keys key) =>
+        CurrentKeyboard.IsKeyDown(key) && PreviousKeyboard.IsKeyUp(key);
 
     /// <summary>Captures input once before scene update systems run.</summary>
     internal void BeginFrame()
@@ -43,8 +50,10 @@ public sealed class InputService : IDisposable
         var currentHardwareKeyboard = Keyboard.GetState();
         var currentHardwareGamePad = GamePad.GetState(PlayerIndex.One);
         var currentHardwareMouse = Mouse.GetState(_game.Window);
+        var previousHardwareKeyboard = _previousHardwareKeyboard;
         var previousHardwareMouse = _previousHardwareMouse;
         var hadHardwareMouseSnapshot = _hasHardwareMouseSnapshot;
+        _previousHardwareKeyboard = currentHardwareKeyboard;
         _previousHardwareMouse = currentHardwareMouse;
         _hasHardwareMouseSnapshot = true;
 
@@ -74,11 +83,13 @@ public sealed class InputService : IDisposable
             return;
         }
 
+        PreviousKeyboard = previousHardwareKeyboard;
         PreviousMouse = CurrentMouse;
         CurrentKeyboard = currentHardwareKeyboard;
         CurrentGamePad = currentHardwareGamePad;
         CurrentMouse = currentHardwareMouse;
         MouseDelta = Point.Zero;
+        HasActiveInput = true;
 
         if (_mouseMode == MouseMode.Free)
         {
@@ -115,6 +126,18 @@ public sealed class InputService : IDisposable
         if (mouseMode == MouseMode.Free)
         {
             DeactivateMouseCapture();
+            if (HasActiveInput && _isFocused && _game.IsActive)
+            {
+                var bounds = _game.Window.ClientBounds;
+                if (bounds.Width > 0 && bounds.Height > 0)
+                {
+                    Mouse.SetPosition(bounds.Width / 2, bounds.Height / 2);
+                }
+            }
+        }
+        else if (HasActiveInput && _isFocused && _game.IsActive)
+        {
+            ActivateMouseCapture();
         }
     }
 
@@ -157,10 +180,12 @@ public sealed class InputService : IDisposable
     private void ClearPublishedInput()
     {
         CurrentKeyboard = default;
+        PreviousKeyboard = default;
         CurrentGamePad = default;
         PreviousMouse = default;
         CurrentMouse = default;
         MouseDelta = Point.Zero;
+        HasActiveInput = false;
     }
 
     private void ActivateMouseCapture()

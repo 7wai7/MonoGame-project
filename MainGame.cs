@@ -1,6 +1,9 @@
-﻿using Microsoft.Xna.Framework;
+﻿using Gum;
+using Gum.Forms;
+using Gum.Wireframe;
+using KernSmith.Gum;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Configuration;
 using MonoGame_project.Engine;
 using MonoGame_project.Engine.Input;
@@ -14,8 +17,11 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     private readonly GraphicsDeviceManager _graphics;
     private readonly InputService _input;
     private readonly InputContextStack _inputContexts;
+    private readonly ApplicationControl _application = new();
     private readonly GameEngine _engine;
     private SpriteBatch _spriteBatch = null!;
+
+    private static GumService GumUI => GumService.Default;
 
     public MainGame()
     {
@@ -41,13 +47,18 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     protected override void Initialize()
     {
+        GumUI.Initialize(this, DefaultVisualsVersion.V3);
+        CustomSetPropertyOnRenderable.InMemoryFontCreator =
+            new KernSmithFontCreator(GraphicsDevice);
+
         var context = new EngineContext(
             GraphicsDevice,
             Content,
             Window,
             Services,
             _input,
-            _inputContexts);
+            _inputContexts,
+            _application);
 
         _engine.Initialize(context);
 
@@ -65,9 +76,12 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     protected override void Update(GameTime gameTime)
     {
         _engine.Update(gameTime);
+        if (_input.HasActiveInput)
+        {
+            GumUI.Update(gameTime);
+        }
 
-        if (_input.CurrentGamePad.Buttons.Back == ButtonState.Pressed ||
-            _input.CurrentKeyboard.IsKeyDown(Keys.Escape))
+        if (_application.ExitRequested)
         {
             Exit();
         }
@@ -80,6 +94,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         GraphicsDevice.Clear(_settings.ClearColor);
 
         _engine.Draw(gameTime, _spriteBatch!);
+        GumUI.Draw();
         base.Draw(gameTime);
     }
 
@@ -98,6 +113,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         {
             _engine.Dispose();
             _input.Dispose();
+            GumUI.Uninitialize();
         }
 
         base.Dispose(disposing);

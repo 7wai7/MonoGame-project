@@ -16,16 +16,19 @@ public sealed class EngineContext
         GameWindow window,
         GameServiceContainer services,
         InputService input,
-        InputContextStack inputContexts)
+        InputContextStack inputContexts,
+        ApplicationControl application)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(inputContexts);
+        ArgumentNullException.ThrowIfNull(application);
         GraphicsDevice = graphicsDevice;
         Content = content;
         Window = window;
         Services = services;
         Input = input;
         InputContexts = inputContexts;
+        Application = application;
     }
 
     public GraphicsDevice GraphicsDevice { get; }
@@ -34,4 +37,5 @@ public sealed class EngineContext
     public GameServiceContainer Services { get; }
     public InputService Input { get; }
     public InputContextStack InputContexts { get; }
+    public ApplicationControl Application { get; }
 }

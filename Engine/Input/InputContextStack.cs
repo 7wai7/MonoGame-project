@@ -43,7 +43,9 @@ public sealed class InputContextStack
         ApplyCurrentMouseMode();
     }
 
-    /// <summary>Removes the expected top context.</summary>
+    /// <summary>
+    /// Removes the expected top context and resumes its predecessor's mouse mode.
+    /// </summary>
     public void Pop(InputContext expectedContext)
     {
         ArgumentNullException.ThrowIfNull(expectedContext);
@@ -73,7 +75,7 @@ public sealed class InputContextStack
 
     /// <summary>
     /// Returns whether the context is present, is not blocked by a context above
-    /// it, and has completed any required relative-mouse activation click.
+    /// it, and has active relative-mouse capture when that mode is required.
     /// </summary>
     public bool CanReceiveInput(InputContext context)
     {

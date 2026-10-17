@@ -71,19 +71,34 @@ is `Free` or `Relative`. A context with `BlocksLowerInput` also prevents systems
 associated with contexts below it from acting on the same snapshot. Systems
 call `CanReceiveInput(...)` before interpreting input for their context.
 
-The bootstrap scene resets the stack to `InspectViewport`. A future pause menu
-can temporarily override it without coordinating directly with the debug
-camera:
+The bootstrap scene resets the stack to `InspectViewport`. `PauseMenuSystem`
+handles each Escape key press and uses `PauseMenu` to release the cursor and
+block inspect camera input while its Gum view is visible:
 
 ```csharp
 context.InputContexts.Push(InputContexts.PauseMenu); // Free cursor; camera blocked.
-context.InputContexts.Pop(InputContexts.PauseMenu);  // Inspect viewport is active again.
+context.InputContexts.Pop(InputContexts.PauseMenu);  // Inspect viewport and mouse capture resume.
 ```
 
-Returning to a relative-mouse context does not capture the cursor immediately.
-The player must left-click inside the focused game window, which prevents scene
-or menu transitions from unexpectedly stealing mouse control. Scene changes
-clear the entire stack before the new scene initializes its root context.
+The menu's exit button requests application shutdown through
+`ApplicationControl`; `MainGame` performs the actual `Exit()` call after Gum
+processes the click. The menu currently overlays the scene; it does not pause
+the physics simulation.
+
+`GameUiTheme` creates styled Gum overlays, panels, and buttons with caller-supplied
+sizes, text, and actions. The scene stores one theme as a `World` resource, so
+its views share the same GPU textures. `PauseMenuView` only arranges these
+elements; the world disposes the theme after its systems and views shut down.
+
+The stack selects a mouse mode; `InputService` owns the actual cursor capture.
+When an active window switches to `Free`, it releases capture and places the
+cursor at the center of the game window.
+Switching from `Free` to `Relative` captures the mouse immediately while the
+game window has active input, including when the menu closes with Escape. At
+initial startup there is no active input yet, and merely regaining focus does
+not switch modes, so those cases still require a left click inside the window.
+Scene changes clear the entire stack before the new scene initializes its root
+context.
 
 ## 3D rendering
 
