@@ -11,34 +11,35 @@ namespace MonoGame_project.Game.UI;
 /// <summary>Shared visuals and GPU textures for the game's dark UI style.</summary>
 public sealed class GameUiTheme : IDisposable
 {
-    private const int FrameTextureSize = 48;
-    private const int ChamferSize = 12;
-    private const int BorderThickness = 2;
+    public const int DefaultChamferSize = 16;
+    public const int DefaultBorderThickness = 2;
+
+    private const int MinimumFrameTextureSize = 48;
 
     private static readonly Color OverlayColor = new(3, 5, 8, 164);
     private static readonly Color PanelColor = new(18, 21, 27);
-    private static readonly Color PanelBorderColor = new(62, 70, 82);
-    private static readonly Color ButtonBorderColor = new(126, 140, 160);
+    private static readonly Color PanelBorderColor = new(82, 174, 201);
+    private static readonly Color ButtonBorderColor = new(115, 220, 244);
     private static readonly Color SecondaryTextColor = new(190, 198, 210);
 
-    private readonly Texture2D _panelTexture;
-    private readonly Texture2D _buttonTexture;
+    private static readonly FrameCorners PanelCorners = new(
+        FrameCornerStyle.Chamfer,
+        FrameCornerStyle.Chamfer,
+        FrameCornerStyle.Chamfer,
+        FrameCornerStyle.Chamfer);
+    private static readonly FrameCorners ButtonCorners = new(
+        FrameCornerStyle.OpenBorder,
+        FrameCornerStyle.Square,
+        FrameCornerStyle.OpenBorder,
+        FrameCornerStyle.Square);
+
+    private readonly GraphicsDevice _graphicsDevice;
+    private readonly Dictionary<FrameTextureSpec, Texture2D> _frameTextures = new();
     private bool _disposed;
 
     public GameUiTheme(GraphicsDevice graphicsDevice)
     {
-        ArgumentNullException.ThrowIfNull(graphicsDevice);
-
-        _panelTexture = CreateFrameTexture(
-            graphicsDevice,
-            chamferAllCorners: true,
-            PanelColor,
-            PanelBorderColor);
-        _buttonTexture = CreateFrameTexture(
-            graphicsDevice,
-            chamferAllCorners: false,
-            Color.Transparent,
-            Color.White);
+        _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
     }
 
     public RectangleRuntime CreateOverlay()
@@ -54,10 +55,22 @@ public sealed class GameUiTheme : IDisposable
         return overlay;
     }
 
-    public ContainerRuntime CreatePanel(float width, float height)
+    /// <summary>Creates a panel; zero chamfer or border size disables that feature.</summary>
+    public ContainerRuntime CreatePanel(
+        float width,
+        float height,
+        int chamferSize = DefaultChamferSize,
+        int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateSize(width, height);
+        ValidateFrameSize(chamferSize, borderThickness);
+        var texture = GetFrameTexture(new FrameTextureSpec(
+            chamferSize,
+            borderThickness,
+            PanelCorners,
+            PanelColor,
+            PanelBorderColor));
 
         var panel = new ContainerRuntime
         {
@@ -66,7 +79,7 @@ public sealed class GameUiTheme : IDisposable
         };
         var frame = new NineSliceRuntime
         {
-            Texture = _panelTexture,
+            Texture = texture,
             TextureAddress = TextureAddress.EntireTexture,
             Color = Color.White
         };
@@ -75,16 +88,26 @@ public sealed class GameUiTheme : IDisposable
         return panel;
     }
 
+    /// <summary>Creates a button; zero chamfer or border size disables that feature.</summary>
     public Button CreateButton(
         string text,
         float width,
         float height,
-        Action onClick)
+        Action onClick,
+        int chamferSize = DefaultChamferSize,
+        int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(onClick);
         ValidateSize(width, height);
+        ValidateFrameSize(chamferSize, borderThickness);
+        var texture = GetFrameTexture(new FrameTextureSpec(
+            chamferSize,
+            borderThickness,
+            ButtonCorners,
+            Color.Transparent,
+            Color.White));
 
         var button = new Button
         {
@@ -94,7 +117,7 @@ public sealed class GameUiTheme : IDisposable
         };
 
         var visual = (ButtonVisual)button.Visual;
-        visual.Background.Texture = _buttonTexture;
+        visual.Background.Texture = texture;
         visual.Background.TextureAddress = TextureAddress.EntireTexture;
         visual.BackgroundColor = ButtonBorderColor;
         visual.ForegroundColor = SecondaryTextColor;
@@ -112,9 +135,37 @@ public sealed class GameUiTheme : IDisposable
             return;
         }
 
-        _panelTexture.Dispose();
-        _buttonTexture.Dispose();
+        foreach (var texture in _frameTextures.Values)
+        {
+            texture.Dispose();
+        }
+
+        _frameTextures.Clear();
         _disposed = true;
+    }
+
+    private Texture2D GetFrameTexture(FrameTextureSpec spec)
+    {
+        if (!_frameTextures.TryGetValue(spec, out var texture))
+        {
+            texture = CreateFrameTexture(_graphicsDevice, spec);
+            _frameTextures.Add(spec, texture);
+        }
+
+        return texture;
+    }
+
+    private static void ValidateFrameSize(int chamferSize, int borderThickness)
+    {
+        if (chamferSize < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chamferSize));
+        }
+
+        if (borderThickness < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(borderThickness));
+        }
     }
 
     private static void ValidateSize(float width, float height)
@@ -132,17 +183,19 @@ public sealed class GameUiTheme : IDisposable
 
     private static Texture2D CreateFrameTexture(
         GraphicsDevice graphicsDevice,
-        bool chamferAllCorners,
-        Color fillColor,
-        Color borderColor)
+        FrameTextureSpec spec)
     {
-        var pixels = new Color[FrameTextureSize * FrameTextureSize];
+        // Nine-slice textures reserve one third of each axis for every corner.
+        var cornerSize = checked(Math.Max(spec.ChamferSize, spec.BorderThickness) + 1);
+        var textureSize = checked(3 * Math.Max(MinimumFrameTextureSize / 3, cornerSize));
+        var dimensions = new FrameDimensions(textureSize, spec.ChamferSize, spec.BorderThickness);
+        var pixels = new Color[checked(textureSize * textureSize)];
 
-        for (var y = 0; y < FrameTextureSize; y++)
+        for (var y = 0; y < textureSize; y++)
         {
-            for (var x = 0; x < FrameTextureSize; x++)
+            for (var x = 0; x < textureSize; x++)
             {
-                if (!IsInsideFrame(x, y, inset: 0, chamferAllCorners))
+                if (!IsInsideFrame(x, y, inset: 0, dimensions, spec.Corners))
                 {
                     continue;
                 }
@@ -150,18 +203,24 @@ public sealed class GameUiTheme : IDisposable
                 var isInsideBorder = IsInsideFrame(
                     x,
                     y,
-                    BorderThickness,
-                    chamferAllCorners);
-                pixels[y * FrameTextureSize + x] = isInsideBorder
-                    ? fillColor
-                    : borderColor;
+                    dimensions.BorderThickness,
+                    dimensions,
+                    spec.Corners);
+                if (isInsideBorder)
+                {
+                    pixels[y * textureSize + x] = spec.FillColor;
+                }
+                else if (!IsOpenBorderCorner(x, y, dimensions, spec.Corners))
+                {
+                    pixels[y * textureSize + x] = spec.BorderColor;
+                }
             }
         }
 
         var texture = new Texture2D(
             graphicsDevice,
-            FrameTextureSize,
-            FrameTextureSize);
+            textureSize,
+            textureSize);
         texture.SetData(pixels);
         return texture;
     }
@@ -170,26 +229,66 @@ public sealed class GameUiTheme : IDisposable
         int x,
         int y,
         int inset,
-        bool chamferAllCorners)
+        FrameDimensions dimensions,
+        FrameCorners corners)
     {
-        var farEdge = FrameTextureSize - 1 - inset;
+        var farEdge = dimensions.TextureSize - 1 - inset;
         if (x < inset || x > farEdge || y < inset || y > farEdge)
         {
             return false;
         }
 
-        var cut = ChamferSize - inset / 2;
+        var cut = dimensions.ChamferSize - inset / 2;
         var fromLeft = x - inset;
         var fromTop = y - inset;
         var fromRight = farEdge - x;
         var fromBottom = farEdge - y;
 
-        if (fromLeft + fromTop < cut || fromRight + fromBottom < cut)
-        {
-            return false;
-        }
-
-        return !chamferAllCorners ||
-            (fromRight + fromTop >= cut && fromLeft + fromBottom >= cut);
+        return (corners.TopLeft != FrameCornerStyle.Chamfer || fromLeft + fromTop >= cut) &&
+            (corners.TopRight != FrameCornerStyle.Chamfer || fromRight + fromTop >= cut) &&
+            (corners.BottomRight != FrameCornerStyle.Chamfer || fromRight + fromBottom >= cut) &&
+            (corners.BottomLeft != FrameCornerStyle.Chamfer || fromLeft + fromBottom >= cut);
     }
+
+    private static bool IsOpenBorderCorner(
+        int x,
+        int y,
+        FrameDimensions dimensions,
+        FrameCorners corners)
+    {
+        var nearLeft = x < dimensions.ChamferSize;
+        var nearTop = y < dimensions.ChamferSize;
+        var nearRight = x >= dimensions.TextureSize - dimensions.ChamferSize;
+        var nearBottom = y >= dimensions.TextureSize - dimensions.ChamferSize;
+
+        return (corners.TopLeft == FrameCornerStyle.OpenBorder && nearLeft && nearTop) ||
+            (corners.TopRight == FrameCornerStyle.OpenBorder && nearRight && nearTop) ||
+            (corners.BottomRight == FrameCornerStyle.OpenBorder && nearRight && nearBottom) ||
+            (corners.BottomLeft == FrameCornerStyle.OpenBorder && nearLeft && nearBottom);
+    }
+
+    private enum FrameCornerStyle
+    {
+        Square,
+        Chamfer,
+        OpenBorder
+    }
+
+    private readonly record struct FrameCorners(
+        FrameCornerStyle TopLeft,
+        FrameCornerStyle TopRight,
+        FrameCornerStyle BottomRight,
+        FrameCornerStyle BottomLeft);
+
+    private readonly record struct FrameDimensions(
+        int TextureSize,
+        int ChamferSize,
+        int BorderThickness);
+
+    private readonly record struct FrameTextureSpec(
+        int ChamferSize,
+        int BorderThickness,
+        FrameCorners Corners,
+        Color FillColor,
+        Color BorderColor);
 }
