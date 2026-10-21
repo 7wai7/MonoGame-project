@@ -30,7 +30,8 @@ public sealed class PauseMenuSystem : GameSystem, IUpdateSystem
             _view.IsVisible = false;
             Context.InputContexts.Pop(InputContexts.PauseMenu);
         }
-        else if (Context.InputContexts.Current == InputContexts.InspectViewport)
+        else if (Context.InputContexts.Current == InputContexts.InspectViewport ||
+                 Context.InputContexts.Current == InputContexts.InspectCursor)
         {
             Context.InputContexts.Push(InputContexts.PauseMenu);
             _view.IsVisible = true;

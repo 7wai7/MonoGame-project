@@ -19,6 +19,7 @@ public sealed class InputService : IDisposable
     private bool _isFocused;
     private bool _isInputReady;
     private bool _disposed;
+    private bool _suppressViewportClickUntilRelease;
 
     internal InputService(Microsoft.Xna.Framework.Game game)
     {
@@ -42,14 +43,23 @@ public sealed class InputService : IDisposable
     public bool WasKeyPressed(Keys key) =>
         CurrentKeyboard.IsKeyDown(key) && PreviousKeyboard.IsKeyUp(key);
 
+    /// <summary>A viewport click, excluding a held click used to acquire mouse capture.</summary>
+    public bool WasViewportLeftClicked =>
+        HasActiveInput && IsRelativeMouseCaptured && !_suppressViewportClickUntilRelease &&
+        CurrentMouse.LeftButton == ButtonState.Pressed &&
+        PreviousMouse.LeftButton == ButtonState.Released;
+
     /// <summary>Captures input once before scene update systems run.</summary>
     internal void BeginFrame()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
         var currentHardwareKeyboard = Keyboard.GetState();
         var currentHardwareGamePad = GamePad.GetState(PlayerIndex.One);
         var currentHardwareMouse = Mouse.GetState(_game.Window);
+        if (currentHardwareMouse.LeftButton == ButtonState.Released)
+        {
+            _suppressViewportClickUntilRelease = false;
+        }
         var previousHardwareKeyboard = _previousHardwareKeyboard;
         var previousHardwareMouse = _previousHardwareMouse;
         var hadHardwareMouseSnapshot = _hasHardwareMouseSnapshot;
@@ -190,6 +200,11 @@ public sealed class InputService : IDisposable
 
     private void ActivateMouseCapture()
     {
+        if (_mouseCaptureActive)
+        {
+            return;
+        }
+
         _mouseVisibilityBeforeCapture = _game.IsMouseVisible;
         _game.IsMouseVisible = false;
         try
@@ -203,6 +218,8 @@ public sealed class InputService : IDisposable
         }
 
         _mouseCaptureActive = true;
+        // The acquisition click must be released before it can select anything.
+        _suppressViewportClickUntilRelease = true;
     }
 
     private void DeactivateMouseCapture()

@@ -31,7 +31,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
         _graphics.PreferredBackBufferHeight = _settings.BackBufferHeight;
         _graphics.SynchronizeWithVerticalRetrace = _settings.VSync;
-        _graphics.PreferredDepthStencilFormat = DepthFormat.Depth24;
+        _graphics.PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8;
         _graphics.PreferMultiSampling = true;
 
         Content.RootDirectory = "Content";

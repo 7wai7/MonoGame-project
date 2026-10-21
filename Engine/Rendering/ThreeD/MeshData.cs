@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace MonoGame_project.Engine.Rendering.ThreeD;
@@ -41,11 +42,21 @@ public sealed class MeshData
 
         _vertices = vertices;
         _indices = indices;
+        var minimum = new Vector3(float.MaxValue);
+        var maximum = new Vector3(float.MinValue);
+        foreach (var vertex in vertices)
+        {
+            minimum = Vector3.Min(minimum, vertex.Position);
+            maximum = Vector3.Max(maximum, vertex.Position);
+        }
+
+        Bounds = new BoundingBox(minimum, maximum);
     }
 
     public int VertexCount => _vertices.Length;
     public int IndexCount => _indices.Length;
     public int PrimitiveCount => _indices.Length / 3;
+    public BoundingBox Bounds { get; }
 
     public ReadOnlyMemory<VertexPositionNormalTexture> Vertices => _vertices;
     public ReadOnlyMemory<int> Indices => _indices;

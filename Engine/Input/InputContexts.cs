@@ -7,7 +7,17 @@ public static class InputContexts
         nameof(InspectViewport),
         MouseMode.Relative);
 
+    /// <summary>Held Left Ctrl releases the inspect cursor without blocking movement.</summary>
+    public static InputContext InspectCursor { get; } = new(
+        nameof(InspectCursor),
+        MouseMode.Free,
+        blocksLowerInput: false);
+
     public static InputContext PauseMenu { get; } = new(
         nameof(PauseMenu),
         MouseMode.Free);
+
+    public static bool CanUseInspect(InputContextStack stack) =>
+        stack.CanReceiveInput(InspectViewport) ||
+        stack.CanReceiveInput(InspectCursor);
 }

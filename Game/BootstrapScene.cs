@@ -31,6 +31,7 @@ public sealed class BootstrapScene : GameScene
     {
         systems.Add(new PauseMenuSystem(), order: -2_000);
         systems.Add(new InspectCameraControlSystem(), order: -1_000);
+        systems.Add(new InspectSystem(), order: 1_050);
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         systems.Add(new PhysicsSystem(), order: 0);
         systems.Add(new MeshRenderSystem(), order: 1_000);

@@ -145,6 +145,22 @@ public sealed class World : IDisposable
         return false;
     }
 
+    /// <summary>Reads every component attached to one entity for diagnostic UI.</summary>
+    public IReadOnlyList<ComponentSnapshot> GetComponentSnapshots(Entity entity)
+    {
+        EnsureAlive(entity);
+        var snapshots = new List<ComponentSnapshot>();
+        foreach (var pool in _componentPools.Values)
+        {
+            if (pool.Has(entity))
+            {
+                snapshots.Add(new ComponentSnapshot(pool.ComponentType, pool.GetBoxed(entity)));
+            }
+        }
+
+        return snapshots;
+    }
+
     public bool Remove<T>(Entity entity) where T : struct, IComponent
     {
         EnsureAlive(entity);

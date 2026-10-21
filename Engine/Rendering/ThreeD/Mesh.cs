@@ -17,6 +17,7 @@ public sealed class Mesh : IDisposable
 
         VertexCount = data.VertexCount;
         PrimitiveCount = data.PrimitiveCount;
+        SourceData = data;
 
         _vertexBuffer = new VertexBuffer(
             graphicsDevice,
@@ -35,6 +36,8 @@ public sealed class Mesh : IDisposable
 
     public int VertexCount { get; }
     public int PrimitiveCount { get; }
+    /// <summary>CPU geometry retained for exact mesh picking and diagnostics.</summary>
+    public MeshData SourceData { get; }
     public bool IsDisposed => _disposed;
 
     internal void Draw(GraphicsDevice graphicsDevice)

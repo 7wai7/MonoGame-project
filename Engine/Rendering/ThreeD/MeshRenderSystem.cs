@@ -70,13 +70,7 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
                 continue;
             }
 
-            _effect.World = transform.WorldMatrix;
-            if (world.TryGet<PhysicsPose3D>(entity, out var physicsPose) && physicsPose.IsActive)
-            {
-                _effect.World = physicsPose.CreateWorldMatrix(
-                    transform.Scale,
-                    MathHelper.Clamp(context.InterpolationAlpha, 0f, 1f));
-            }
+            _effect.World = GetRenderWorldMatrix(world, entity, transform, context.InterpolationAlpha);
 
             _effect.DiffuseColor = renderer.Tint.ToVector3();
             _effect.Alpha = renderer.Tint.A / 255f;
@@ -89,7 +83,23 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
         }
     }
 
-    private static bool TryGetActiveCamera(
+    internal static Matrix GetRenderWorldMatrix(
+        World world,
+        Entity entity,
+        in Transform3D transform,
+        float interpolationAlpha)
+    {
+        if (world.TryGet<PhysicsPose3D>(entity, out var pose) && pose.IsActive)
+        {
+            return pose.CreateWorldMatrix(
+                transform.Scale,
+                MathHelper.Clamp(interpolationAlpha, 0f, 1f));
+        }
+
+        return transform.WorldMatrix;
+    }
+
+    internal static bool TryGetActiveCamera(
         World world,
         out Transform3D transform,
         out Camera3D camera)

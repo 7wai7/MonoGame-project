@@ -9,6 +9,7 @@ internal interface IComponentPool
     Type ComponentType { get; }
     Entity GetEntity(int denseIndex);
     bool Has(Entity entity);
+    object GetBoxed(Entity entity);
     bool Remove(Entity entity);
     void Clear();
 }
@@ -78,6 +79,8 @@ internal sealed class ComponentPool<T> : IComponentPool where T : struct, ICompo
 
         return ref _components[_sparse[entity.Id] - 1];
     }
+
+    public object GetBoxed(Entity entity) => Get(entity);
 
     public bool TryGet(Entity entity, out T component)
     {

@@ -14,7 +14,9 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem
 {
     public void Update(World world, in FrameTime time)
     {
-        if (!Context.InputContexts.CanReceiveInput(InputContexts.InspectViewport) ||
+        UpdateCursorContext();
+
+        if (!InputContexts.CanUseInspect(Context.InputContexts) ||
             !TryGetControlledCamera(world, out var entity))
         {
             return;
@@ -24,10 +26,13 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem
         ref var camera = ref world.Get<Camera3D>(entity);
         ref var controller = ref world.Get<InspectCameraController3D>(entity);
 
+        var mouseDelta = Context.InputContexts.Current == InputContexts.InspectViewport
+            ? Context.Input.MouseDelta
+            : Point.Zero;
         var forward = CalculateViewDirection(
             transform.Position,
             camera.Target,
-            Context.Input.MouseDelta,
+            mouseDelta,
             controller.MouseSensitivity,
             controller.PitchLimit);
 
@@ -46,7 +51,25 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem
         camera.Up = Vector3.Up;
     }
 
-    private static bool TryGetControlledCamera(World world, out Entity entity)
+    private void UpdateCursorContext()
+    {
+        if (!Context.Input.HasActiveInput)
+        {
+            return;
+        }
+
+        var leftControlDown = Context.Input.CurrentKeyboard.IsKeyDown(Keys.LeftControl);
+        if (leftControlDown && Context.InputContexts.Current == InputContexts.InspectViewport)
+        {
+            Context.InputContexts.Push(InputContexts.InspectCursor);
+        }
+        else if (!leftControlDown && Context.InputContexts.Current == InputContexts.InspectCursor)
+        {
+            Context.InputContexts.Pop(InputContexts.InspectCursor);
+        }
+    }
+
+    internal static bool TryGetControlledCamera(World world, out Entity entity)
     {
         foreach (var candidate in world.Query<Transform3D, Camera3D>())
         {
