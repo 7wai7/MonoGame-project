@@ -107,14 +107,20 @@ has `Transform3D` and `MeshRenderer`. `MeshRenderSystem` finds the camera,
 creates its view/projection matrices, then draws every visible mesh using depth
 testing and `BasicEffect` lighting.
 
-`InspectCameraController3D` is an opt-in free-camera controller for examining a
+`InspectCameraController3D` is an opt-in camera controller for examining a
 scene and is independent from future character or vehicle controls. While it is
 enabled on the active camera, the mouse controls its view, WASD moves
 horizontally, and Q/E moves down or up. A left click inside the game window
 activates this input and captures the cursor; losing focus releases it and
 requires another click.
-`InspectCameraControlSystem` updates the camera during the variable-rate update;
-it has no physics body, gravity, or collision response.
+After selecting a mesh, C switches between free flight and orbiting that
+entity at the controller's initial `OrbitDistance` (10 units by default).
+In orbit mode the mouse changes the viewing angle and the wheel changes the
+distance; WASD/Q/E do not move the attached camera. Holding Left Ctrl releases
+the cursor for the inspector and reserves the wheel for its component list.
+`InspectCameraControlSystem` updates input during variable-rate update and
+follows the target's interpolated pose before rendering. It has no physics
+body, gravity, or collision response.
 
 `MeshData` contains CPU-side vertices and indices and does not need a
 `GraphicsDevice`. `ProceduralMeshFactory` creates box, sphere, cylinder,

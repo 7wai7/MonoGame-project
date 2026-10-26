@@ -90,6 +90,8 @@ public sealed class InspectHudView : IDisposable
         set => _reticle.Visible = value;
     }
 
+    public bool IsOrbiting { get; set; }
+
     public bool IsCursorOverComponentList(Point mousePosition, int viewportWidth)
     {
         if (!_root.Visible || !_panel.Visible)
@@ -139,9 +141,13 @@ public sealed class InspectHudView : IDisposable
             }
         }
 
+        var modeHint = IsOrbiting ? "C FREE" : "C FOLLOW";
+        var visibleRange = $"{_scrollOffset + 1}-{Math.Min(_scrollOffset + VisibleRows, _allRows.Count)}/{_allRows.Count}";
         SetText(_footerText, _allRows.Count > VisibleRows
-            ? $"CTRL + HOVER + WHEEL  {_scrollOffset + 1}-{Math.Min(_scrollOffset + VisibleRows, _allRows.Count)}/{_allRows.Count}"
-            : "HOLD LEFT CTRL FOR CURSOR");
+            ? $"{modeHint}  •  CTRL+HOVER+WHEEL  {visibleRange}"
+            : IsOrbiting
+                ? "C FREE CAMERA  •  WHEEL ZOOM  •  CTRL CURSOR"
+                : "C FOLLOW  •  HOLD LEFT CTRL FOR CURSOR");
     }
 
     public void ClearSelection()

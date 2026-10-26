@@ -41,14 +41,16 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
     };
 
     private InspectHudView _view = null!;
+    private InspectSessionState _session = null!;
     private BasicEffect _outlineEffect = null!;
     private Entity _hovered = Entity.None;
-    private Entity _selected = Entity.None;
     private bool _contentLoaded;
 
     protected override void OnInitialize()
     {
         _view = new InspectHudView(World.GetResource<GameUiTheme>());
+        _session = new InspectSessionState();
+        World.SetResource(_session);
     }
 
     public void LoadContent(World world, ContentManager content)
@@ -81,6 +83,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
             InspectCameraControlSystem.TryGetControlledCamera(world, out cameraEntity);
         _view.IsVisible = active;
         _view.IsReticleVisible = Context.InputContexts.Current == InputContexts.InspectViewport;
+        _view.IsOrbiting = !_session.OrbitTarget.IsNone;
         _hovered = Entity.None;
         if (!active)
         {
@@ -90,7 +93,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
         var cameraTransform = world.Get<Transform3D>(cameraEntity);
         var camera = world.Get<Camera3D>(cameraEntity);
 
-        if (Context.Input.IsRelativeMouseCaptured)
+        if (Context.Input.IsRelativeMouseCaptured && _session.OrbitTarget.IsNone)
         {
             var direction = camera.Target - cameraTransform.Position;
             if (direction.LengthSquared() > 1e-8f)
@@ -102,17 +105,18 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
 
             if (Context.Input.WasViewportLeftClicked)
             {
-                _selected = _hovered;
+                _session.Selected = _hovered;
             }
         }
 
-        if (!world.IsAlive(_selected) ||
-            !world.TryGet<Transform3D>(_selected, out var selectedTransform) ||
-            !world.TryGet<MeshRenderer>(_selected, out var selectedRenderer) ||
+        if (!world.IsAlive(_session.Selected) ||
+            !world.TryGet<Transform3D>(_session.Selected, out var selectedTransform) ||
+            !world.TryGet<MeshRenderer>(_session.Selected, out var selectedRenderer) ||
             !selectedRenderer.IsVisible || selectedRenderer.Mesh is null ||
             selectedRenderer.Mesh.IsDisposed)
         {
-            _selected = Entity.None;
+            _session.Selected = Entity.None;
+            _session.OrbitTarget = Entity.None;
             _view.ClearSelection();
             return;
         }
@@ -125,11 +129,11 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
                 Context.Input.PreviousMouse.ScrollWheelValue
             : 0;
         _view.ShowSelection(
-            _selected,
+            _session.Selected,
             cameraTransform.Position,
             selectedTransform,
             selectedRenderer,
-            world.GetComponentSnapshots(_selected),
+            world.GetComponentSnapshots(_session.Selected),
             wheelDelta / 120);
     }
 
@@ -141,7 +145,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
             return;
         }
 
-        var outlined = world.IsAlive(_hovered) ? _hovered : _selected;
+        var outlined = world.IsAlive(_hovered) ? _hovered : _session.Selected;
         if (!world.IsAlive(outlined) ||
             !world.TryGet<Transform3D>(outlined, out var transform) ||
             !world.TryGet<MeshRenderer>(outlined, out var renderer) ||
@@ -193,6 +197,8 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
 
     protected override void OnShutdown()
     {
+        World.RemoveResource<InspectSessionState>();
+        _session = null!;
         _view.Dispose();
         _view = null!;
         _stencilOnlyBlend.Dispose();
