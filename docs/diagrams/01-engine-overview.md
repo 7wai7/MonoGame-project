@@ -34,9 +34,9 @@ flowchart TB
 
     subgraph Physics["Physics boundary"]
         Commands["PhysicsCommands"]
-        Simulation["PhysicsSimulation"]
+        Simulation["JoltPhysicsSimulation"]
         Collisions["PhysicsCollisionEvents"]
-        Jitter["Jitter World + RigidBody"]
+        Jolt["Jolt PhysicsSystem + Body"]
     end
 
     subgraph Rendering["3D rendering"]
@@ -67,7 +67,7 @@ flowchart TB
     PhysicsSystem --> Commands
     PhysicsSystem --> Simulation
     PhysicsSystem --> Collisions
-    Simulation --> Jitter
+    Simulation --> Jolt
     MeshRender --> World
     MeshRender --> Camera
     MeshRender --> Transform
@@ -85,7 +85,7 @@ flowchart TB
     class Program,MainGame,MonoLoop host
     class GameEngine,EngineContext,FrameTime,FixedTime,RenderContext,Bootstrap,Scheduler engine
     class World ecs
-    class GameplayMotion,PhysicsSystem,Commands,Simulation,Collisions,Jitter physics
+    class GameplayMotion,PhysicsSystem,Commands,Simulation,Collisions,Jolt physics
     class MeshRender,DebugRender,Camera,Transform,MeshRenderer,Mesh,GPU render
 ~~~
 
@@ -154,11 +154,11 @@ World є центром даних, але не містить ігрової п
 
 1. Компоненти описують бажану конфігурацію тіла.
 2. PhysicsCommands описує одноразові дії.
-3. PhysicsSystem синхронізує ECS з PhysicsSimulation.
-4. PhysicsSimulation володіє справжнім Jitter World і RigidBody.
+3. PhysicsSystem синхронізує ECS з JoltPhysicsSimulation.
+4. JoltPhysicsSimulation володіє native Jolt PhysicsSystem і Body.
 5. Після кроку результат повертається в Transform3D і PhysicsPose3D.
 
-Ця межа не дозволяє типам Jitter поширитися по всьому ігровому коду.
+Ця межа не дозволяє типам Jolt поширитися по всьому ігровому коду.
 
 ### 7. Межа рендерингу
 
@@ -172,8 +172,8 @@ MeshRenderSystem читає ECS, але не змінює фізику:
 
 ## Головне правило залежностей
 
-Ігрова логіка працює через ECS-компоненти та engine API. Jitter і GPU-буфери
-залишаються деталями відповідно PhysicsSimulation та Mesh. Завдяки цьому
+Ігрова логіка працює через ECS-компоненти та engine API. Jolt і GPU-буфери
+залишаються деталями відповідно JoltPhysicsSimulation та Mesh. Завдяки цьому
 майбутні gameplay-системи не повинні знати, як усередині влаштована фізика або
 відправлення вершин на відеокарту.
 

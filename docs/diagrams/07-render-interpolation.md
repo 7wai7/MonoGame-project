@@ -8,7 +8,7 @@
 ~~~mermaid
 flowchart LR
     subgraph Physics["FixedUpdate: фізика"]
-        J["Jitter RigidBody<br/>нова position + rotation"]
+        J["Jolt Body<br/>нова position + rotation"]
         T["Transform3D<br/>остання завершена pose"]
         P["PhysicsPose3D<br/>Previous + Current"]
         J --> T
@@ -47,11 +47,11 @@ flowchart LR
 Previous = Current
 ~~~
 
-Після Jitter World.Step:
+Після Jolt PhysicsSystem.Update:
 
 ~~~text
-Current = нова pose Jitter body
-Transform3D = нова pose Jitter body
+Current = нова pose Jolt body
+Transform3D = нова pose Jolt body
 ~~~
 
 У Draw:

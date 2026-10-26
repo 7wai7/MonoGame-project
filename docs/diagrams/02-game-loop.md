@@ -130,7 +130,7 @@ PhysicsSystem:
 Назва GameplayKinematicSystem тут умовна: окремого обов'язкового класу з такою
 назвою рушій не вимагає. Важливе саме правило порядку — система встигає
 поставити SetKinematicTarget до того, як PhysicsSystem спорожнить чергу команд
-і виконає Jitter step.
+і виконає Jolt step.
 
 ## Update, FixedUpdate чи Draw?
 

@@ -26,9 +26,13 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Gum.MonoGame" Version="2026.10.1.1" />
-    <PackageReference Include="Jitter2" Version="2.10.0" />
+    <PackageReference Include="JoltPhysicsSharp" Version="2.23.0" />
     <PackageReference Include="KernSmith.MonoGameGum" Version="2026.9.2.1" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.6" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.6" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets/Terrains/Rugged Terrain with Rivers/*.exr"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

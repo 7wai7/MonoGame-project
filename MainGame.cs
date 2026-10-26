@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGame_project.Configuration;
 using MonoGame_project.Engine;
+using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Input;
 using MonoGame_project.Game;
 
@@ -20,12 +21,15 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     private readonly ApplicationControl _application = new();
     private readonly GameEngine _engine;
     private SpriteBatch _spriteBatch = null!;
+    private bool _firstUpdateMeasured;
+    private bool _firstFrameDrawn;
 
     private static GumService GumUI => GumService.Default;
 
     public MainGame()
     {
         _graphics = new GraphicsDeviceManager(this);
+        _graphics.GraphicsProfile = GraphicsProfile.HiDef;
         _input = new InputService(this);
         _inputContexts = new InputContextStack(_input);
         _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
@@ -47,33 +51,56 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     protected override void Initialize()
     {
-        GumUI.Initialize(this, DefaultVisualsVersion.V3);
-        CustomSetPropertyOnRenderable.InMemoryFontCreator =
-            new KernSmithFontCreator(GraphicsDevice);
+        using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
+        {
+            GumUI.Initialize(this, DefaultVisualsVersion.V3);
+            CustomSetPropertyOnRenderable.InMemoryFontCreator =
+                new KernSmithFontCreator(GraphicsDevice);
 
-        var context = new EngineContext(
-            GraphicsDevice,
-            Content,
-            Window,
-            Services,
-            _input,
-            _inputContexts,
-            _application);
+            var context = new EngineContext(
+                GraphicsDevice,
+                Content,
+                Window,
+                Services,
+                _input,
+                _inputContexts,
+                _application);
 
-        _engine.Initialize(context);
+            _engine.Initialize(context);
+        }
 
         // MonoGame may enter LoadContent from its base initialization path,
         // so the engine must be ready before this call.
-        base.Initialize();
+        using (StartupProfiler.Measure("MonoGame base.Initialize (includes LoadContent)"))
+        {
+            base.Initialize();
+        }
     }
 
     protected override void LoadContent()
     {
+        using var startupStage = StartupProfiler.Measure("MonoGame LoadContent (scene + systems)");
         _spriteBatch = new SpriteBatch(GraphicsDevice);
         _engine.LoadContent();
     }
 
     protected override void Update(GameTime gameTime)
+    {
+        if (!_firstUpdateMeasured)
+        {
+            using (StartupProfiler.Measure("First Update"))
+            {
+                UpdateFrame(gameTime);
+            }
+
+            _firstUpdateMeasured = true;
+            return;
+        }
+
+        UpdateFrame(gameTime);
+    }
+
+    private void UpdateFrame(GameTime gameTime)
     {
         _engine.Update(gameTime);
         if (_input.HasActiveInput)
@@ -90,6 +117,23 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     }
 
     protected override void Draw(GameTime gameTime)
+    {
+        if (!_firstFrameDrawn)
+        {
+            using (StartupProfiler.Measure("First Draw"))
+            {
+                DrawFrame(gameTime);
+            }
+
+            StartupProfiler.Complete();
+            _firstFrameDrawn = true;
+            return;
+        }
+
+        DrawFrame(gameTime);
+    }
+
+    private void DrawFrame(GameTime gameTime)
     {
         GraphicsDevice.Clear(_settings.ClearColor);
 

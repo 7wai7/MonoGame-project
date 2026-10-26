@@ -308,7 +308,7 @@ public static class ProceduralMeshFactory
     }
 
     /// <summary>
-    /// Creates a Y-axis cone whose local origin matches Jitter's center of mass.
+    /// Creates a Y-axis cone whose local origin is one quarter-height above its base.
     /// </summary>
     public static MeshData CreateCone(
         float radius,

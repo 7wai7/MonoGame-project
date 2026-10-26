@@ -2,19 +2,22 @@ using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Ecs;
 using MonoGame_project.Engine.Physics.Components;
 using MonoGame_project.Engine.Rendering;
 using MonoGame_project.Engine.Rendering.ThreeD;
 using MonoGame_project.Engine.Systems;
+using MonoGame_project.Engine.Time;
 
 namespace MonoGame_project.Engine.Physics;
 
 /// <summary>Draws supported colliders as wireframes for development diagnostics.</summary>
-public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRenderSystem
+public sealed class PhysicsDebugRenderSystem : GameSystem, IUpdateSystem, IContentSystem, IRenderSystem
 {
     private const int CircleSegments = 24;
     private const int MaximumLineVertices = 512;
+    private const float TerrainWireOffset = 0.025f;
 
     private static readonly Vector3[] BoxCorners =
     [
@@ -42,7 +45,17 @@ public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRend
     private bool _contentLoaded;
 
     public bool IsVisible { get; set; } = true;
+    public bool ShowTerrain { get; set; }
     public Color Color { get; set; } = Color.LimeGreen;
+    public Color TerrainColor { get; set; } = new(244, 199, 89);
+
+    public void Update(World world, in FrameTime time)
+    {
+        if (Context.Input.HasActiveInput && Context.Input.WasKeyPressed(Keys.F3))
+        {
+            ShowTerrain = !ShowTerrain;
+        }
+    }
 
     public void LoadContent(World world, ContentManager content)
     {
@@ -82,6 +95,10 @@ public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRend
         DrawCylinders(world, context);
         DrawCapsules(world, context);
         DrawCones(world, context);
+        if (ShowTerrain)
+        {
+            DrawTerrain(world, context);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -167,8 +184,8 @@ public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRend
             var collider = world.Get<ConeCollider3D>(entity);
             var pose = GetPoseMatrix(world, entity, context.InterpolationAlpha);
 
-            // Jitter places a cone's origin at its center of mass: one quarter
-            // of its height above the base, rather than at its bounding-box center.
+            // The cone's local origin is one quarter of its height above the
+            // base, matching the render mesh and physics shape.
             var baseY = -collider.Height * 0.25f;
             var apexY = collider.Height * 0.75f;
 
@@ -185,6 +202,38 @@ public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRend
             }
 
             SubmitLines(context.GraphicsDevice);
+        }
+    }
+
+    private void DrawTerrain(World world, in RenderContext context)
+    {
+        if (!world.TryGetResource<JoltPhysicsSimulation>(out var simulation))
+        {
+            return;
+        }
+
+        var graphicsDevice = context.GraphicsDevice;
+        foreach (var entity in world.Query<Transform3D, TerrainCollider3D>())
+        {
+            if (!simulation.TryGetTerrainSurface(entity, out var surface))
+            {
+                continue;
+            }
+
+            var pose = GetPoseMatrix(world, entity, context.InterpolationAlpha);
+            var positions = surface.Positions.Span;
+            var edges = surface.WireIndices.Span;
+            BeginLines();
+            for (var i = 0; i < edges.Length; i += 2)
+            {
+                AddTerrainLine(
+                    positions[edges[i]],
+                    positions[edges[i + 1]],
+                    pose,
+                    graphicsDevice);
+            }
+
+            SubmitLines(graphicsDevice);
         }
     }
 
@@ -248,6 +297,24 @@ public sealed class PhysicsDebugRenderSystem : GameSystem, IContentSystem, IRend
         _lineVertices[_lineVertexCount++] = new VertexPositionColor(
             Vector3.Transform(second, matrix),
             Color);
+    }
+
+    private void AddTerrainLine(
+        in Vector3 first,
+        in Vector3 second,
+        in Matrix matrix,
+        GraphicsDevice graphicsDevice)
+    {
+        if (_lineVertexCount + 2 > _lineVertices.Length)
+        {
+            SubmitLines(graphicsDevice);
+            BeginLines();
+        }
+
+        _lineVertices[_lineVertexCount++] = new VertexPositionColor(
+            Vector3.Transform(first + Vector3.Up * TerrainWireOffset, matrix), TerrainColor);
+        _lineVertices[_lineVertexCount++] = new VertexPositionColor(
+            Vector3.Transform(second + Vector3.Up * TerrainWireOffset, matrix), TerrainColor);
     }
 
     private static Vector3 CreateCirclePoint(

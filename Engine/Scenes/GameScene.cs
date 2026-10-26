@@ -1,5 +1,6 @@
 using System;
 using MonoGame_project.Ecs;
+using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Rendering;
 using MonoGame_project.Engine.Systems;
 using MonoGame_project.Engine.Time;
@@ -46,7 +47,10 @@ public abstract class GameScene : IDisposable
         }
 
         OnInitialize(context);
-        Systems.Initialize(World, context);
+        using (StartupProfiler.Measure("Scene systems Initialize"))
+        {
+            Systems.Initialize(World, context);
+        }
         _initialized = true;
     }
 
@@ -59,7 +63,10 @@ public abstract class GameScene : IDisposable
         }
 
         OnLoadContent(context);
-        Systems.LoadContent(context.Content);
+        using (StartupProfiler.Measure("Scene systems LoadContent"))
+        {
+            Systems.LoadContent(context.Content);
+        }
         _contentLoaded = true;
     }
 

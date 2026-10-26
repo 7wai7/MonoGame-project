@@ -320,7 +320,7 @@ DestroyEntity має навмисно строгий порядок:
 6. Id додається до freeIds.
 
 PhysicsSystem підписаний на ComponentRemoving. Якщо видаляється Transform3D або
-PhysicsBody3D, він одразу видаляє відповідний Jitter body, поки ще має достатньо
+PhysicsBody3D, він одразу видаляє відповідний Jolt body, поки ще має достатньо
 контексту. Видалення collider синхронізується перед наступним physics step, щоб
 можна було замінити один тип collider іншим без видалення самого RigidBody.
 

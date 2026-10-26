@@ -8,8 +8,8 @@ sequenceDiagram
     participant K as Умовна gameplay-система order менше 0
     participant C as PhysicsCommands resource
     participant P as PhysicsSystem order 0
-    participant S as PhysicsSimulation
-    participant J as Jitter World
+    participant S as JoltPhysicsSimulation
+    participant J as Jolt PhysicsSystem
     participant E as PhysicsCollisionEvents
     participant W as ECS World
 
@@ -17,17 +17,17 @@ sequenceDiagram
     P->>W: знайти та синхронізувати physics entities
     P->>C: Drain у FIFO-порядку
     C-->>P: SetKinematicTarget command
-    P->>S: розрахувати velocity та angular velocity
+    P->>S: MoveKinematic до target за fixed delta
     P->>S: Step(fixed delta)
-    S->>J: World.Step(delta)
-    J-->>S: нові пози, швидкості та collision callbacks
+    S->>J: Update(delta, jobs)
+    J-->>S: нові пози, швидкості та contact callbacks
     P->>E: Publish()
     P->>S: TryGetPose для кожного physics entity
     S-->>P: position + rotation
     P->>W: оновити Transform3D та PhysicsPose3D
 ~~~
 
-PhysicsSystem виконується тільки у FixedUpdate. Тому Jitter завжди отримує
+PhysicsSystem виконується тільки у FixedUpdate. Тому Jolt завжди отримує
 однаковий delta time, незалежно від FPS рендерингу.
 
 Gameplay-система на схемі є умовним прикладом. Вона показує, де має працювати
@@ -38,14 +38,16 @@ Gameplay-система на схемі є умовним прикладом. В
 ~~~mermaid
 flowchart TD
     A["1. CleanupInactivePoses"] --> B["2. EnsurePhysicsBodies"]
-    B --> C["3. CapturePreviousPoses"]
-    C --> D["4. StopKinematicBodies"]
-    D --> E["5. Drain PhysicsCommands"]
-    E --> F["6. PhysicsSimulation.Step"]
-    F --> G["7. PhysicsCollisionEvents.Publish"]
-    G --> H["8. SynchronizeTransforms"]
+    B --> Terrain["3. EnsureTerrainBodies"]
+    Terrain --> C["4. CapturePreviousPoses"]
+    C --> D["5. StopKinematicBodies"]
+    D --> E["6. Drain PhysicsCommands"]
+    E --> F["7. JoltPhysicsSimulation.Step"]
+    F --> G["8. PhysicsCollisionEvents.Publish"]
+    G --> H["9. SynchronizeTransforms"]
 
-    B -. "створює body / оновлює shape" .-> Native["Jitter RigidBody"]
+    B -. "створює body / оновлює shape" .-> Native["Jolt Body"]
+    Terrain -. "створює heightfield body" .-> Native
     E -. "force / impulse / teleport / target" .-> Native
     F --> Native
     Native -. "нова pose" .-> H
@@ -53,7 +55,7 @@ flowchart TD
     classDef ecs fill:#fef3c7,stroke:#d97706,color:#451a03
     classDef physics fill:#fee2e2,stroke:#dc2626,color:#450a0a
     classDef native fill:#fecaca,stroke:#991b1b,color:#450a0a
-    class A,B,C,D,E,G,H physics
+    class A,B,Terrain,C,D,E,G,H physics
     class F,Native native
 ~~~
 
@@ -75,18 +77,23 @@ PhysicsSystem знаходить усі Entity з PhysicsBody3D і переві�
 - рівно один підтримуваний collider: BoxCollider3D, SphereCollider3D,
   CylinderCollider3D, CapsuleCollider3D або ConeCollider3D.
 
-Потім PhysicsSimulation.EnsureBody:
+Потім JoltPhysicsSimulation.EnsureBody:
 
-- створює відсутній RigidBody;
-- змінює параметри наявного Jitter shape, якщо змінився його розмір;
-- замінює лише shape у тому самому RigidBody, якщо змінився тип collider;
+- створює відсутній Jolt body;
+- створює новий shape і встановлює його у тому самому body, якщо змінився
+  розмір або тип collider;
 - інакше оновлює friction, restitution, gravity, mass і motion type.
 
-PhysicsPose3D скидається до поточної пози лише після створення нового RigidBody.
-Зміна shape зберігає і RigidBody, і його pose, тому interpolation не потрібно
+PhysicsPose3D скидається до поточної пози лише після створення нового body.
+Зміна shape зберігає body і його pose, тому interpolation не потрібно
 починати заново.
 
-### 3. CapturePreviousPoses
+### 3. EnsureTerrainBodies
+
+`EnsureTerrainBodies` окремо створює або оновлює статичні heightfield bodies
+для Entity з `TerrainCollider3D`. Вони не мають `PhysicsBody3D`.
+
+### 4. CapturePreviousPoses
 
 Перед новим кроком:
 
@@ -98,7 +105,7 @@ PreviousRotation = CurrentRotation
 Таким чином зберігається початок відрізка, по якому пізніше інтерполює
 рендерер.
 
-### 4. StopKinematicBodies
+### 5. StopKinematicBodies
 
 Усі kinematic bodies отримують нульові linear та angular velocity.
 
@@ -106,7 +113,7 @@ PreviousRotation = CurrentRotation
 команда задасть швидкості на поточний tick. Якщо команда не надійшла, платформа
 не продовжить рух зі старою швидкістю.
 
-### 5. Drain PhysicsCommands
+### 6. Drain PhysicsCommands
 
 Команди виконуються в порядку додавання до Queue:
 
@@ -118,7 +125,7 @@ PreviousRotation = CurrentRotation
 | ApplyImpulse at position | додає лінійний та обертальний ефект |
 | SetVelocity | прямо задає лінійну швидкість |
 | Teleport | миттєво змінює pose та очищає contact cache |
-| SetKinematicTarget | задає швидкості для досягнення target за один tick |
+| SetKinematicTarget | просить Jolt досягнути target за один tick через MoveKinematic |
 | SetMotionType | перемикає Dynamic, Kinematic або Static |
 
 Якщо Entity вже не існує або втратила PhysicsBody3D, команда безпечно
@@ -126,39 +133,30 @@ PreviousRotation = CurrentRotation
 
 #### SetKinematicTarget
 
-Для позиції:
+`PhysicsSystem` передає позицію, поворот і тривалість fixed tick у
+`JoltPhysicsSimulation.SetKinematicTarget`. Той викликає Jolt `MoveKinematic`.
+Jolt сам визначає рух, потрібний для контакту платформи з dynamic body;
+рушій більше не рахує angular velocity вручну.
 
-~~~text
-linearVelocity = (targetPosition - currentPosition) / fixedDelta
-~~~
+### 7. JoltPhysicsSimulation.Step
 
-Для повороту PhysicsSimulation:
-
-1. знаходить quaternion-різницю current → target;
-2. обирає коротший шлях обертання;
-3. перетворює quaternion на axis + angle;
-4. рахує angularVelocity = axis × angle / fixedDelta.
-
-Саме швидкості, а не пряме переставлення body, дозволяють Jitter коректно
-розрахувати контакт рухомої платформи з dynamic body.
-
-### 6. PhysicsSimulation.Step
-
-PhysicsSimulation викликає Jitter World.Step з фіксованим delta. Усередині
-Jitter:
+JoltPhysicsSimulation викликає Jolt `PhysicsSystem.Update` з фіксованим delta.
+Усередині Jolt:
 
 - інтегруються сили, gravity та швидкості;
 - шукаються перетини collider;
 - розв'язуються контакти й обмеження;
 - оновлюються пози та орієнтації bodies;
-- викликаються BeginCollide та EndCollide callbacks.
+- викликаються contact-added і contact-removed callbacks.
 
-Jitter типи залишаються всередині PhysicsSimulation. Перетворення Vector3 і
-Quaternion виконує PhysicsConvert.
+Jolt типи та перетворення між MonoGame і `System.Numerics` залишаються
+всередині `JoltPhysicsSimulation`.
 
-### 7. Publish collision events
+### 8. Publish collision events
 
-Callbacks Jitter спочатку записують зміни у pending lists:
+Jolt може повідомити про кілька контактів між одними й тими самими Entity.
+`JoltPhysicsSimulation` рахує активні контакти кожної пари й після `Step`
+додає до pending lists тільки зміну стану пари:
 
 ~~~text
 pendingStarted
@@ -169,14 +167,14 @@ pendingEnded
 Ended і очищає pending. Система з order більшим за PhysicsSystem може прочитати
 узгоджений набір подій саме останнього fixed tick.
 
-### 8. SynchronizeTransforms
+### 9. SynchronizeTransforms
 
-Після Jitter step для кожної фізичної Entity:
+Після Jolt step для кожної фізичної Entity:
 
 ~~~text
-Jitter RigidBody.Position    → Transform3D.Position
-Jitter RigidBody.Orientation → Transform3D.Rotation
-                              → PhysicsPose3D.Current
+Jolt Body.Position → Transform3D.Position
+Jolt Body.Rotation → Transform3D.Rotation
+                   → PhysicsPose3D.Current
 ~~~
 
 Transform3D тепер містить останню завершену фізичну позу. PhysicsPose3D містить
@@ -186,12 +184,12 @@ Transform3D тепер містить останню завершену фізи
 
 | Тип | Хто задає рух | Як взаємодіяти |
 |---|---|---|
-| Dynamic | Jitter | сили, impulse або velocity |
-| Kinematic | gameplay через target, рух виконує Jitter | SetKinematicTarget кожен потрібний tick |
+| Dynamic | Jolt | сили, impulse або velocity |
+| Kinematic | gameplay через target, рух виконує Jolt | SetKinematicTarget кожен потрібний tick |
 | Static | не рухається під час нормальної симуляції | початкова pose; для рідкісного переносу Teleport |
 
 Для Entity з PhysicsBody3D не слід напряму змінювати Position або Rotation у
-Transform3D: наступна синхронізація перезапише їх даними Jitter.
+Transform3D: наступна синхронізація перезапише їх даними Jolt.
 
 ## Межі даних
 
@@ -201,9 +199,9 @@ flowchart LR
     Gameplay --> Commands["PhysicsCommands<br/>одноразові дії"]
     Components --> Bridge["PhysicsSystem"]
     Commands --> Bridge
-    Bridge --> Simulation["PhysicsSimulation<br/>entity ↔ body mapping"]
-    Simulation --> Jitter["Jitter World<br/>native types"]
-    Jitter --> Simulation
+    Bridge --> Simulation["JoltPhysicsSimulation<br/>entity ↔ body mapping"]
+    Simulation --> Jolt["Jolt PhysicsSystem<br/>native types"]
+    Jolt --> Simulation
     Simulation --> Bridge
     Bridge --> Transform["Transform3D<br/>PhysicsPose3D"]
     Transform --> Render["Render systems"]
@@ -212,7 +210,6 @@ flowchart LR
 ## Відповідні файли
 
 - [PhysicsSystem.cs](../../Engine/Physics/PhysicsSystem.cs)
-- [PhysicsSimulation.cs](../../Engine/Physics/PhysicsSimulation.cs)
+- [JoltPhysicsSimulation.cs](../../Engine/Physics/JoltPhysicsSimulation.cs)
 - [PhysicsCommands.cs](../../Engine/Physics/PhysicsCommands.cs)
 - [PhysicsCollisionEvents.cs](../../Engine/Physics/PhysicsCollisionEvents.cs)
-- [PhysicsConvert.cs](../../Engine/Physics/PhysicsConvert.cs)

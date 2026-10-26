@@ -1,211 +1,166 @@
 # 6. Життєвий цикл фізичного тіла
 
-ECS Entity і Jitter RigidBody — це два різні об'єкти. Їхній зв'язок створює та
-підтримує PhysicsSimulation через приватний BodyEntry.
+ECS `Entity` містить компоненти гри, а Jolt `Body` живе всередині фізичного
+рушія. Їх пов'язує `JoltPhysicsSimulation`: ігровий код не зберігає native body
+у компоненті й звертається до фізики через `PhysicsSystem` та
+`PhysicsCommands`.
 
-## Створення та синхронізація
+## Створення primitive body
 
 ~~~mermaid
 flowchart TD
-    A["PhysicsSystem знаходить<br/>Entity з PhysicsBody3D"] --> B{"Є Transform3D?"}
-    B -->|"ні"| Error1["помилка конфігурації"]
-    B -->|"так"| C{"Рівно один<br/>підтримуваний collider?"}
-    C -->|"ні"| Error2["помилка конфігурації"]
-    C -->|"так"| D["EnsureBody"]
-    D --> E{"BodyEntry існує?"}
-    E -->|"ні"| F["CreateBody"]
-    F --> G["створити Jitter RigidBody"]
-    G --> H["задати position, rotation,<br/>потрібний shape та settings"]
-    H --> I["записати mapping<br/>Entity ↔ RigidBody"]
-    I --> J["підписатися на collision callbacks"]
-    J --> K["PhysicsBodyChange.Created"]
-
-    E -->|"так"| L{"Тип shape збігається?"}
-    L -->|"ні"| M["від'єднати старий shape"]
-    M --> N["приєднати новий shape<br/>до того самого RigidBody"]
-    N --> Q["ApplySettings + refresh shape"]
-    Q --> R["PhysicsBodyChange.ShapeChanged"]
-
-    L -->|"так"| O{"Розміри змінилися?"}
-    O -->|"так"| P["змінити властивості<br/>наявного shape"]
-    P --> Q
-    O -->|"ні"| S["ApplySettings"]
-    S --> T["PhysicsBodyChange.None"]
-
-    K --> U["створити або скинути PhysicsPose3D"]
-    R --> V["продовжити без скидання interpolation"]
-    T --> V
-
-    classDef ecs fill:#fef3c7,stroke:#d97706,color:#451a03
-    classDef physics fill:#fee2e2,stroke:#dc2626,color:#450a0a
-    classDef error fill:#fecaca,stroke:#991b1b,color:#450a0a
-    class A,B,C,D,E,L,O,U,V ecs
-    class F,G,H,I,J,K,M,N,P,Q,R,S,T physics
-    class Error1,Error2 error
+    A["PhysicsSystem: Entity з PhysicsBody3D"] --> B{"Є Transform3D і<br/>рівно один primitive collider?"}
+    B -->|"ні"| Error["помилка конфігурації"]
+    B -->|"так"| C["JoltPhysicsSimulation.EnsureBody"]
+    C --> D{"Є BodyEntry для Entity?"}
+    D -->|"ні"| E["створити Jolt Shape і Body"]
+    E --> F["записати Entity → BodyEntry<br/>та BodyID → Entity"]
+    F --> G["PhysicsBodyChange.Created"]
+    G --> H["створити або скинути PhysicsPose3D"]
+    D -->|"так"| I{"Тип або розміри<br/>collider змінилися?"}
+    I -->|"так"| J["створити новий Shape<br/>SetShape у тому самому BodyID"]
+    J --> K["оновити масу та інерцію<br/>для Dynamic body"]
+    K --> L["PhysicsBodyChange.ShapeChanged"]
+    I -->|"ні"| M["оновити змінені settings"]
+    M --> N["PhysicsBodyChange.None"]
+    L --> O["залишити історію PhysicsPose3D"]
+    N --> O
 ~~~
 
-## Що зберігає BodyEntry
+На одній primitive Entity мають бути `Transform3D`, `PhysicsBody3D` і рівно
+один із `BoxCollider3D`, `SphereCollider3D`, `CylinderCollider3D`,
+`CapsuleCollider3D`, `ConeCollider3D`. `PhysicsSystem` перевіряє цей набір
+перед створенням тіла.
 
-BodyEntry є приватним службовим записом PhysicsSimulation:
+`BodyEntry` — приватний запис усередині `JoltPhysicsSimulation`:
 
 ~~~text
 BodyEntry
-├── Body     → Jitter RigidBody
-├── Shape    → приєднаний Jitter RigidBodyShape
-└── Settings → остання синхронізована PhysicsBody3D
+├── Id       → Jolt BodyID
+├── Collider → останні тип і розміри колайдера
+└── Settings → останній синхронізований PhysicsBody3D
+
+Entity → BodyEntry
+BodyID → Entity
 ~~~
 
-PhysicsSimulation має два словники:
-
-~~~text
-Entity    → BodyEntry
-RigidBody → Entity
-~~~
-
-Перший потрібен для команд і синхронізації pose. Другий потрібен, щоб collision
-callback Jitter можна було перетворити назад на пару ECS Entity.
+Перший словник потрібен для команд і синхронізації поз. Другий дозволяє
+перетворити native contact callback на пару ECS-сутностей.
 
 ## Навіщо PhysicsBodyChange
 
-EnsureBody повертає один із трьох результатів:
-
-| Результат | Що сталося | Дія PhysicsSystem |
+| Результат `EnsureBody` | Що сталося | Дія `PhysicsSystem` |
 |---|---|---|
-| None | body уже існує; shape не змінювався | залишити історію pose |
-| Created | створено новий RigidBody | скинути Previous і Current |
-| ShapeChanged | shape змінено або замінено в наявному body | залишити історію pose |
+| `Created` | створено новий Jolt Body | скинути `Previous` і `Current` у `PhysicsPose3D` |
+| `ShapeChanged` | новий shape встановлено у тому самому body | залишити історію поз |
+| `None` | геометрія не змінювалася | залишити історію поз |
 
-Сигнал потрібен, щоб PhysicsSystem відрізняв справжнє створення native body від
-зміни його collision geometry. У другому випадку pose самого body не змінюється.
+Коли змінюється лише friction, restitution, mass, gravity participation або
+motion type, `ApplySettings` оновлює властивості тіла. Зміна типу чи розміру
+колайдера створює новий Jolt shape, але **не новий body**: `SetShape` зберігає
+`BodyID` і позу. Для Dynamic body потім оновлюються mass та inertia.
+Поточні контакти цієї Entity очищаються та будуть визначені знову під час
+наступного кроку фізики.
 
-## Як collider змінюється без перебудови body
+Render `Mesh` при цьому не перебудовується автоматично. Візуальна геометрія й
+колайдер — незалежні дані; `Transform3D.Scale` не змінює розмір колайдера.
 
-Зміна friction або restitution не змінює геометрію, тому їх можна записати у
-наявний RigidBody.
-
-Jitter дозволяє змінювати `Size`, `Radius`, `Height` і `Length` у підтримуваних
-primitive shapes. Якщо змінюється лише розмір, PhysicsSimulation:
-
-1. змінює властивості вже приєднаного shape;
-2. для Dynamic body перераховує mass та inertia з тією самою заданою масою;
-3. оновлює broad-phase bounds і contact cache;
-4. залишає той самий RigidBody, його pose, velocity та constraints.
-
-Якщо тип collider змінюється, наприклад `BoxCollider3D` на
-`SphereCollider3D`, PhysicsSimulation від'єднує старий shape та приєднує новий
-до **того самого** RigidBody. Видаляти й заново створювати body не потрібно.
-
-Render Mesh при цьому не перебудовується автоматично. Розміри collider і
-Transform3D.Scale навмисно є незалежними даними.
-
-## Підтримувані primitive colliders
-
-| ECS-компонент | Параметри | Локальна вісь |
+| Primitive collider | Параметри | Локальна вісь |
 |---|---|---|
-| BoxCollider3D | повний `Size` по X/Y/Z | — |
-| SphereCollider3D | `Radius` | — |
-| CylinderCollider3D | `Radius`, повний `Height` | Y |
-| CapsuleCollider3D | `Radius`, `Length` циліндричної частини | Y |
-| ConeCollider3D | `Radius`, повний `Height` | Y |
+| `BoxCollider3D` | повний `Size` по X/Y/Z | — |
+| `SphereCollider3D` | `Radius` | — |
+| `CylinderCollider3D` | `Radius`, повний `Height` | Y |
+| `CapsuleCollider3D` | `Radius`, `Length` циліндричної частини | Y |
+| `ConeCollider3D` | `Radius`, повний `Height` | Y |
 
-Для capsule повна висота дорівнює `Length + 2 * Radius`. На одній фізичній
-Entity має бути рівно один компонент collider. Convex hull, triangle mesh,
-compound і terrain shapes потребують окремого представлення geometry та не є
-частиною цього набору primitive colliders.
+Повна висота capsule — `Length + 2 * Radius`. Локальний origin cone у цьому
+рушії — на чверть висоти над base: base має `Y = -Height / 4`, apex —
+`Y = 3 * Height / 4`. Render mesh, Jolt shape і debug wireframe використовують
+одну домовленість.
 
-Jitter розташовує локальний origin cone у його центрі мас: base лежить на
-`-Height / 4`, а apex — на `3 * Height / 4`. Debug wireframe враховує це, тому
-він збігається з collision shape.
+## Окреме terrain body
 
-## Оновлення налаштувань
+`TerrainCollider3D` не є primitive collider і не потребує `PhysicsBody3D`.
+`TerrainColliderStreamingSystem` додає цей компонент поблизу активної камери
+та рухомих фізичних тіл. `PhysicsSystem.EnsureTerrainBodies` передає його до
+`JoltPhysicsSimulation`, який створює статичний `HeightFieldShape` з кожного
+висотного семпла чанка. Native `BodyID` та посилання на `TerrainHeightField`
+зберігаються в окремому `TerrainBodyEntry`. Render LOD на цей колайдер не
+впливає.
 
-Кожен fixed tick ApplySettings порівнює поточний PhysicsBody3D з кешованим:
+Коли streaming видаляє `TerrainCollider3D`, відповідне native body видаляється
+синхронно через ECS lifecycle callback.
 
-- MotionType оновлюється за потреби;
-- Friction, Restitution та AffectedByGravity записуються в body;
-- mass/inertia перераховуються для Dynamic body, якщо змінилася Mass або shape,
-  а також під час переходу з Static/Kinematic у Dynamic.
+## Хто керує позою
 
-Pose Transform3D не копіюється в уже існуючий Jitter body. Для фізичної Entity
-джерелом правди є Jitter, тому рух виконується через PhysicsCommands.
+Для існуючого body `Transform3D.Position` і `Rotation` не копіюються у Jolt
+кожного кадру. Джерелом правди є Jolt:
 
-## Видалення
+- Dynamic body рухається від сил, імпульсів і швидкості.
+- Kinematic body отримує ціль через `PhysicsCommands.SetKinematicTarget`;
+  `JoltPhysicsSimulation` викликає `MoveKinematic` на поточний fixed tick.
+- Static body не рухається під час звичайної симуляції; рідкісне перенесення
+  виконується явною командою `Teleport`.
+
+Після `Step` `PhysicsSystem` копіює native position/rotation у `Transform3D`
+та `PhysicsPose3D.Current`. Тому gameplay-коду не слід змінювати позицію
+фізичної Entity безпосередньо в `Transform3D`.
+
+## Видалення та події контакту
 
 ~~~mermaid
 sequenceDiagram
     autonumber
     participant G as Gameplay / World
-    participant W as ECS World
     participant P as PhysicsSystem
-    participant S as PhysicsSimulation
-    participant J as Jitter World
+    participant S as JoltPhysicsSimulation
+    participant J as Jolt world
 
-    G->>W: Remove PhysicsBody3D<br/>або transform / entity
-    W->>P: ComponentRemoving(entity, type)
-    Note over W,P: Компонент і Entity ще доступні
+    G->>P: ComponentRemoving для PhysicsBody3D,<br/>TerrainCollider3D або Transform3D
     P->>S: RemoveBody(entity)
-    S->>S: знайти active collision pairs
-    S->>S: додати штучні pending Ended events
-    S->>J: unsubscribe callbacks + Remove(body)
-    P->>W: PhysicsPose3D.IsActive = false
-    P->>P: додати Entity у pendingPoseRemoval
-    W->>W: завершити видалення компонента / Entity
-    Note over P,W: На початку наступного physics tick
-    P->>W: Remove PhysicsPose3D, якщо Entity ще жива
+    S->>S: прибрати active contact pairs<br/>і записати pending Ended
+    S->>J: RemoveAndDestroyBody(BodyID)
+    P->>P: позначити PhysicsPose3D неактивною
+    Note over P: на початку наступного fixed tick
+    P->>G: видалити PhysicsPose3D, якщо Entity жива
 ~~~
 
-Native body видаляється **синхронно** під час ComponentRemoving. Воно не може
-залишитися у Jitter World ще на один tick і створити «примарне» зіткнення.
+World надсилає `ComponentRemoving` **до** видалення ECS-даних. Native body
+зникає одразу, тож не може створити «примарний» контакт у наступному tick.
+Видалення `PhysicsPose3D` відкладається: усередині lifecycle callback World
+не дозволяє вкладені структурні зміни. Якщо зникає ціла Entity, повторний
+`RemoveBody` просто поверне `false`.
 
-PhysicsPose3D видаляється пізніше, бо World забороняє вкладені структурні зміни
-всередині lifecycle callback. До видалення він неактивний, тому renderer його
-не використовує.
+Видалення лише primitive collider синхронізується на початку наступного fixed
+tick. Між двома ticks можна замінити, наприклад, `BoxCollider3D` на
+`SphereCollider3D` без видалення body. Якщо після заміни немає рівно одного
+primitive collider, `PhysicsSystem` видаляє body та повідомляє про помилку
+конфігурації.
 
-Якщо видаляється ціла Entity, World викликає ComponentRemoving для всіх її
-компонентів. Повторний RemoveBody для тієї самої Entity просто повертає false.
-
-Видалення collider обробляється інакше: воно синхронізується на початку
-наступного fixed tick. Завдяки цьому між двома ticks можна послідовно видалити
-`BoxCollider3D`, додати `SphereCollider3D`, а потім зберегти наявний RigidBody.
-Якщо до синхронізації нового collider не додано або одночасно залишилося більше
-одного collider, PhysicsSystem видаляє native body та повідомляє про неправильну
-конфігурацію.
-
-Якщо видалити лише Transform3D, але залишити PhysicsBody3D на живій Entity,
-native body зникне одразу, а наступний EnsurePhysicsBodies повідомить про
-неповну конфігурацію помилкою. Фізична Entity повинна або мати весь
-обов'язковий набір компонентів, або не мати PhysicsBody3D.
-
-## Зіткнення під час видалення
-
-Jitter не зобов'язаний викликати EndCollide, коли body явно прибирається.
-PhysicsSimulation сам знаходить усі active pairs з цією Entity та додає Ended
-до pending events.
-
-Native body зникає одразу, а накопичені Ended стають видимими у
-PhysicsCollisionEvents після наступного Publish у physics tick.
+Jolt може повідомити про кілька native контактів між одними й тими самими
+Entity. `JoltPhysicsSimulation` рахує їх, а після `Step` публікує тільки зміну
+стану пари: `Started` при першому контакті, `Ended` після останнього. При
+явному видаленні body `Ended` додається вручну й стає видимим після наступного
+`PhysicsCollisionEvents.Publish()`.
 
 ## Зміна MotionType
 
-Рекомендований шлях — PhysicsCommands.SetMotionType:
+Рекомендований шлях — `PhysicsCommands.SetMotionType`:
 
-1. gameplay додає команду;
-2. PhysicsSystem забирає її перед Jitter step;
-3. PhysicsSimulation змінює native MotionType;
-4. PhysicsSystem оновлює PhysicsBody3D.MotionType;
-5. подальший рух підпорядковується правилам нового типу.
+1. Gameplay додає команду.
+2. `PhysicsSystem` забирає її перед Jolt step.
+3. `JoltPhysicsSimulation` змінює native motion type та object layer.
+4. `PhysicsSystem` оновлює `PhysicsBody3D.MotionType`.
 
 Так ECS-компонент і native body змінюються в одному визначеному місці.
 
 ## Відповідні файли
 
-- [PhysicsSimulation.cs](../../Engine/Physics/PhysicsSimulation.cs)
+- [JoltPhysicsSimulation.cs](../../Engine/Physics/JoltPhysicsSimulation.cs)
 - [PhysicsSystem.cs](../../Engine/Physics/PhysicsSystem.cs)
 - [PhysicsBody3D.cs](../../Engine/Physics/Components/PhysicsBody3D.cs)
-- [BoxCollider3D.cs](../../Engine/Physics/Components/BoxCollider3D.cs)
-- [SphereCollider3D.cs](../../Engine/Physics/Components/SphereCollider3D.cs)
-- [CylinderCollider3D.cs](../../Engine/Physics/Components/CylinderCollider3D.cs)
-- [CapsuleCollider3D.cs](../../Engine/Physics/Components/CapsuleCollider3D.cs)
-- [ConeCollider3D.cs](../../Engine/Physics/Components/ConeCollider3D.cs)
+- [TerrainCollider3D.cs](../../Engine/Physics/Components/TerrainCollider3D.cs)
+- [PhysicsCommands.cs](../../Engine/Physics/PhysicsCommands.cs)
+- [PhysicsCollisionEvents.cs](../../Engine/Physics/PhysicsCollisionEvents.cs)
 - [PhysicsPose3D.cs](../../Engine/Physics/Components/PhysicsPose3D.cs)
 - [World.cs](../../Ecs/World.cs)

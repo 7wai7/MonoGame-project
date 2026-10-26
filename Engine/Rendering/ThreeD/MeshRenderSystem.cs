@@ -54,12 +54,15 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
         graphicsDevice.RasterizerState = RasterizerState.CullNone;
         graphicsDevice.SamplerStates[0] = SamplerState.LinearWrap;
 
-        _effect.View = Matrix.CreateLookAt(cameraTransform.Position, camera.Target, camera.Up);
-        _effect.Projection = Matrix.CreatePerspectiveFieldOfView(
+        var view = Matrix.CreateLookAt(cameraTransform.Position, camera.Target, camera.Up);
+        var projection = Matrix.CreatePerspectiveFieldOfView(
             camera.FieldOfView,
             graphicsDevice.Viewport.AspectRatio,
             camera.NearPlane,
             camera.FarPlane);
+        _effect.View = view;
+        _effect.Projection = projection;
+        var frustum = new BoundingFrustum(view * projection);
 
         foreach (var entity in world.Query<Transform3D, MeshRenderer>())
         {
@@ -70,10 +73,21 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
                 continue;
             }
 
-            _effect.World = GetRenderWorldMatrix(world, entity, transform, context.InterpolationAlpha);
+            var worldMatrix = GetRenderWorldMatrix(world, entity, transform, context.InterpolationAlpha);
+            if (IsOutsideFrustum(frustum, renderer.Mesh.SourceData.Bounds, worldMatrix, transform.Scale))
+            {
+                continue;
+            }
+
+            _effect.World = worldMatrix;
 
             _effect.DiffuseColor = renderer.Tint.ToVector3();
             _effect.Alpha = renderer.Tint.A / 255f;
+            _effect.TextureEnabled = renderer.Texture is not null;
+            _effect.Texture = renderer.Texture;
+            graphicsDevice.SamplerStates[0] = renderer.Texture is null
+                ? SamplerState.LinearWrap
+                : SamplerState.LinearClamp;
 
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
@@ -81,6 +95,22 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
                 renderer.Mesh.Draw(graphicsDevice);
             }
         }
+    }
+
+    private static bool IsOutsideFrustum(
+        BoundingFrustum frustum,
+        in BoundingBox localBounds,
+        in Matrix worldMatrix,
+        in Vector3 scale)
+    {
+        var localCenter = (localBounds.Min + localBounds.Max) * 0.5f;
+        var localRadius = Vector3.Distance(localCenter, localBounds.Max);
+        var largestScale = MathF.Max(MathF.Abs(scale.X),
+            MathF.Max(MathF.Abs(scale.Y), MathF.Abs(scale.Z)));
+        var worldSphere = new BoundingSphere(
+            Vector3.Transform(localCenter, worldMatrix),
+            localRadius * largestScale);
+        return frustum.Contains(worldSphere) == ContainmentType.Disjoint;
     }
 
     internal static Matrix GetRenderWorldMatrix(

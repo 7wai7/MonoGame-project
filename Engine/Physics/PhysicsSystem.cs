@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using MonoGame_project.Ecs;
+using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Physics.Components;
 using MonoGame_project.Engine.Rendering.ThreeD;
 using MonoGame_project.Engine.Systems;
@@ -14,7 +16,8 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
     private readonly PhysicsSettings _settings;
     private readonly List<BodyCandidate> _bodyCandidates = [];
     private readonly HashSet<Entity> _pendingPoseRemoval = [];
-    private PhysicsSimulation _simulation = null!;
+    private readonly PhysicsStepProfiler _stepProfiler = new();
+    private JoltPhysicsSimulation _simulation = null!;
     private PhysicsCommands _commands = null!;
     private PhysicsCollisionEvents _collisionEvents = null!;
 
@@ -32,31 +35,60 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
     protected override void OnInitialize()
     {
         _collisionEvents = new PhysicsCollisionEvents();
-        _simulation = new PhysicsSimulation(_settings, _collisionEvents);
-        _commands = new PhysicsCommands();
+        _settings.Validate();
+        try
+        {
+            _simulation = new JoltPhysicsSimulation(_settings, _collisionEvents);
+            _commands = new PhysicsCommands();
 
-        World.SetResource(_simulation);
-        World.SetResource(_commands);
-        World.SetResource(_collisionEvents);
-        World.ComponentRemoving += OnComponentRemoving;
+            World.SetResource(_simulation);
+            World.SetResource(_commands);
+            World.SetResource(_collisionEvents);
+            World.ComponentRemoving += OnComponentRemoving;
 
-        EnsurePhysicsBodies();
+            EnsurePhysicsBodies();
+            using (StartupProfiler.Measure("Initial terrain collision bodies (Jolt)"))
+            {
+                EnsureTerrainBodies();
+            }
+        }
+        catch
+        {
+            World.ComponentRemoving -= OnComponentRemoving;
+            World.RemoveResource<PhysicsCollisionEvents>();
+            World.RemoveResource<PhysicsCommands>();
+            World.RemoveResource<JoltPhysicsSimulation>();
+            _simulation?.Dispose();
+            _simulation = null!;
+            _commands = null!;
+            _collisionEvents = null!;
+            throw;
+        }
     }
 
     public void FixedUpdate(World world, in FixedTime time)
     {
+        var fixedStartedAt = Stopwatch.GetTimestamp();
         var deltaSeconds = time.DeltaSeconds;
 
         CleanupInactivePoses();
         EnsurePhysicsBodies();
+        EnsureTerrainBodies();
         CapturePreviousPoses();
 
         StopKinematicBodies();
         _commands.Drain(command => ApplyCommand(command, deltaSeconds));
+        var stepStartedAt = Stopwatch.GetTimestamp();
         _simulation.Step(deltaSeconds);
+        var stepDuration = Stopwatch.GetElapsedTime(stepStartedAt);
         _collisionEvents.Publish();
 
         SynchronizeTransforms();
+        _stepProfiler.Record(
+            stepDuration,
+            Stopwatch.GetElapsedTime(fixedStartedAt),
+            _simulation.BodyCount,
+            _simulation.TerrainBodyCount);
     }
 
     protected override void OnShutdown()
@@ -69,7 +101,7 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
 
         World.RemoveResource<PhysicsCollisionEvents>();
         World.RemoveResource<PhysicsCommands>();
-        World.RemoveResource<PhysicsSimulation>();
+        World.RemoveResource<JoltPhysicsSimulation>();
 
         _simulation.Dispose();
         _simulation = null!;
@@ -177,6 +209,22 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
             $"{entity} has PhysicsBody3D but {reason}. " +
             "Add exactly one of BoxCollider3D, SphereCollider3D, " +
             "CylinderCollider3D, CapsuleCollider3D, or ConeCollider3D.");
+    }
+
+    private void EnsureTerrainBodies()
+    {
+        foreach (var entity in World.Query<Transform3D, TerrainCollider3D>())
+        {
+            if (World.Has<PhysicsBody3D>(entity))
+            {
+                throw new InvalidOperationException(
+                    $"{entity} terrain is already a static physics body; remove PhysicsBody3D.");
+            }
+
+            var transform = World.Get<Transform3D>(entity);
+            var collider = World.Get<TerrainCollider3D>(entity);
+            _simulation.EnsureTerrainBody(entity, transform, collider);
+        }
     }
 
     private void CapturePreviousPoses()
@@ -311,6 +359,7 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
     private void OnComponentRemoving(World world, Entity entity, Type componentType)
     {
         if (componentType != typeof(PhysicsBody3D) &&
+            componentType != typeof(TerrainCollider3D) &&
             componentType != typeof(Transform3D))
         {
             return;

@@ -4,8 +4,8 @@ using MonoGame_project.Ecs;
 namespace MonoGame_project.Engine.Physics.Components;
 
 /// <summary>
-/// Engine-facing rigid-body settings. The native Jitter body is owned by
-/// PhysicsSimulation and is not stored in this component.
+/// Engine-facing rigid-body settings. Jolt owns the
+/// native body; it is not stored in this ECS component.
 /// </summary>
 public struct PhysicsBody3D : IComponent
 {

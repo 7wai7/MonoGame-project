@@ -7,6 +7,7 @@ using MonoGame_project.Engine.Rendering;
 using MonoGame_project.Engine.Rendering.ThreeD;
 using MonoGame_project.Engine.Systems;
 using MonoGame_project.Engine.Time;
+using MonoGame_project.Game.Terrain;
 using MonoGame_project.Game.UI;
 
 namespace MonoGame_project.Game;
@@ -147,6 +148,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
 
         var outlined = world.IsAlive(_hovered) ? _hovered : _session.Selected;
         if (!world.IsAlive(outlined) ||
+            world.Has<TerrainChunkTag>(outlined) ||
             !world.TryGet<Transform3D>(outlined, out var transform) ||
             !world.TryGet<MeshRenderer>(outlined, out var renderer) ||
             !renderer.IsVisible || renderer.Mesh is null || renderer.Mesh.IsDisposed)

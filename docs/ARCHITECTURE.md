@@ -2,7 +2,7 @@
 
 Detailed Ukrainian diagrams and step-by-step explanations are available in the
 [visual architecture guide](diagrams/README.md). It covers the engine lifecycle,
-main loop, ECS storage and queries, Jitter synchronization, body lifecycle, and
+main loop, ECS storage and queries, Jolt synchronization, body lifecycle, and
 render interpolation.
 
 `MainGame` is only the MonoGame/DesktopGL host. It configures the window and
@@ -54,7 +54,7 @@ Resources are world-scoped non-component services or state. Register them with
 notifications. They run before ECS data is deleted, so a subscriber can still
 read the entity and component being removed. A lifecycle handler may clean up
 external resources, but it must not make another structural ECS change. This is
-the hook `PhysicsSystem` uses to remove a Jitter body immediately when its
+the hook `PhysicsSystem` uses to remove a Jolt body immediately when its
 `PhysicsBody3D`, transform, or owning entity is removed.
 
 ## Input routing
@@ -105,7 +105,8 @@ context.
 An active camera entity has `Transform3D` and `Camera3D`. A renderable entity
 has `Transform3D` and `MeshRenderer`. `MeshRenderSystem` finds the camera,
 creates its view/projection matrices, then draws every visible mesh using depth
-testing and `BasicEffect` lighting.
+testing and `BasicEffect` lighting. A `MeshRenderer` can optionally reference a
+diffuse texture; the scene that loaded it owns its lifetime.
 
 `InspectCameraController3D` is an opt-in camera controller for examining a
 scene and is independent from future character or vehicle controls. While it is
@@ -126,18 +127,20 @@ body, gravity, or collision response.
 `GraphicsDevice`. `ProceduralMeshFactory` creates box, sphere, cylinder,
 capsule, and cone data. Its dimensions follow the matching collider semantics:
 cylinder/capsule/cone use local Y, capsule length excludes its hemispheres, and
-the cone origin matches Jitter's center of mass. `Mesh` uploads the result to GPU
+the cone origin is one quarter-height above its base. `Mesh` uploads the result to GPU
 vertex/index buffers and owns only those GPU resources. `MeshData` is a general
 rendering type; physics must not depend on it.
 
 ## Physics
 
-The engine uses Jitter 2 behind an engine-owned boundary. Gameplay and rendering
-code use MonoGame types and ECS entities; native `RigidBody`, Jitter math types,
-and the Jitter `World` remain private to `PhysicsSimulation`.
+The engine uses Jolt Physics. Gameplay and rendering code use MonoGame types
+and ECS entities; native Jolt types remain private to `JoltPhysicsSimulation`.
+`PhysicsSettings.UseMultithreading` controls the Jolt worker threads and is
+disabled by default.
 
-A physical entity requires `Transform3D`, `PhysicsBody3D`, and exactly one
-supported collider component. For example, a physical box is created like this:
+A primitive physical entity requires `Transform3D`, `PhysicsBody3D`, and exactly
+one supported primitive collider component. For example, a physical box is
+created like this:
 
 ```csharp
 var cube = World.CreateEntity();
@@ -159,10 +162,11 @@ The physics files have these responsibilities:
   automatically by the physics system. Gameplay code does not add or edit it.
   The `PhysicsSystem` automatically adds it to every entity with a physical body
   and removes it itself.
-- `PhysicsSimulation` owns the Jitter world, native bodies, entity-to-body
-  mapping, collision callbacks, and MonoGame/Jitter type conversion.
+- `JoltPhysicsSimulation` owns the native Jolt world, body mappings, collision
+  callbacks, MonoGame/Jolt type conversion, and one heightfield per active
+  terrain chunk.
 - `PhysicsSystem` creates and removes native bodies, executes commands, steps
-  Jitter once per fixed tick, publishes collision changes, and copies resulting
+  Jolt once per fixed tick, publishes collision changes, and copies resulting
   poses back to ECS.
 - `PhysicsCommands` is the public queue for forces, impulses, velocity changes,
   teleports, and motion-type changes.
@@ -171,20 +175,18 @@ The physics files have these responsibilities:
 - `PhysicsDebugRenderSystem` optionally draws all supported colliders as green
   wireframes.
 
-Collider dimensions can be edited at runtime. Primitive dimensions are updated
-on the existing Jitter shape. If the collider component type changes, the old
-shape is detached and the new shape is attached to the same `RigidBody`. The
-body identity, velocity, and constraints therefore remain intact; mass and
+Collider dimensions can be edited at runtime. Jolt replaces the shape
+on the existing body when needed, preserving the body's identity; mass and
 inertia are recalculated for dynamic bodies.
 
 ### Pose ownership
 
-- A dynamic body's pose is controlled by Jitter. Move it with a force, impulse,
+- A dynamic body's pose is controlled by Jolt. Move it with a force, impulse,
   or velocity command.
 - A kinematic body's pose is controlled with
   `PhysicsCommands.SetKinematicTarget`. The physics system converts the target
-  into linear and angular velocity before the Jitter step, so it still
-  interacts correctly with dynamic bodies.
+  into Jolt kinematic motion before the physics step, so it still
+  interacts with dynamic bodies.
 - A static body keeps its initial pose. Use an explicit `Teleport` command for
   a rare reposition rather than editing `Transform3D`.
 - After every fixed step, physics writes position and rotation to `Transform3D`.
@@ -212,7 +214,7 @@ foreach (var collision in collisions.Started)
 }
 ```
 
-Queued commands run immediately before the next Jitter step. A kinematic body
+Queued commands run immediately before the next physics step. A kinematic body
 stops when a fixed tick has no new target command. A future gameplay
 fixed-update system that creates kinematic targets should run before
 `PhysicsSystem`; a system that consumes `PhysicsCollisionEvents` should run
@@ -226,6 +228,85 @@ the body. At synchronization time, an entity with `PhysicsBody3D` must still
 have exactly one supported collider. If an explicitly removed body was touching
 another body, an ended-collision event is generated.
 
-`MeshData` remains rendering geometry, not physics geometry. Terrain-specific
-height, voxel, or density data and matching terrain colliders will be introduced
-with the terrain feature rather than coupled to the general mesh renderer.
+## Terrain
+
+`TerrainHeightField` is immutable CPU-side height data for one square chunk. It
+also samples a one-cell border around the chunk so `TerrainMeshFactory`
+computes the same edge normals as its neighbors. `TerrainSurfaceBuilder`
+creates an adaptive render `TerrainSurface`: nearly planar areas use fewer triangles,
+while areas with more height variation retain detail. `maxHeightError` is the
+maximum vertical difference from the original full-resolution triangulation.
+Zero permits only exact planar simplification; a larger value removes more
+geometry at the cost of precision.
+Every sample along a chunk's outer edge is retained, and shared internal edges
+are stitched, so independently simplified neighbors have no gaps. The renderer
+turns its surface into `MeshData` and a GPU `Mesh`; physics builds a Jolt
+heightfield directly from the original height samples, never from `MeshData`.
+The near render LOD uses the exact source grid instead of
+running adaptive simplification at an almost-zero error threshold. Middle and
+far LODs use errors of 1 and 8 world units. Collision uses every source height
+sample regardless of the render LOD. Far render
+patches are additionally limited to 16×16 source cells, so even very flat
+areas cannot collapse into one large triangle fan. The near LOD remains the
+full source grid. The F3 debug wireframe generates triangle-edge indices lazily
+from the source grid; Jolt itself uses its heightfield representation.
+
+`TerrainRenderStreamingSystem` builds nine full-resolution meshes near the starting
+camera before the first frame, then prioritizes missing visible chunks and
+nearby LOD upgrades. One CPU mesh is generated at a time on a background
+worker; GPU buffers and ECS `MeshRenderer` changes happen on the game thread.
+Until a new LOD is ready, the previous mesh stays visible. Every LOD retains
+the full source-grid border, so neighboring meshes share edge vertices.
+Terrain outside the view is not built eagerly and may appear progressively
+after startup or a rapid camera move. Loaded meshes are frustum-culled at draw.
+
+`TerrainCollider3D` creates a static Jolt body for each active collision
+chunk. It does not require `PhysicsBody3D`; terrain must have unit scale and
+remain upright. `TerrainColliderStreamingSystem` adds this component within
+one chunk of the active camera and each moving physics body, and removes it
+elsewhere. The physics system registers and removes the native body through
+the normal ECS component lifecycle. The render mesh does not depend on whether
+the chunk currently has collision.
+Multiple native contacts are aggregated into a single entity-pair collision
+event. Jolt uses one `HeightFieldShape` per active chunk from the original
+height samples, independently of render mesh LOD.
+
+`dotnet run --project MonoGame-project.csproj -c Release -- --physics-smoke`
+runs a short headless Jolt regression with and without worker threads. It checks a sphere landing
+across a sloped chunk seam, contact events, kinematic movement, all five
+primitive shapes, motion-type changes, and body cleanup. The smoke test is not
+a full-world performance benchmark.
+
+The bootstrap scene loads the supplied 4096×4096 OpenEXR height and diffuse
+images from `Assets/Terrains/Rugged Terrain with Rivers`. It maps the whole image
+to a 5,000×5,000-world-unit terrain and multiplies raw EXR height values by
+2,600 world units, without normalizing the image's minimum and maximum. These
+numbers are scene assumptions, not verified dimensions of the downloaded asset;
+adjust `TerrainWorldExtent`, `TerrainHeightScale`, and `TerrainHeightOffset` in
+`BootstrapScene` after choosing a suitable gameplay scale.
+The scene creates 32×32 chunks with 128×128 height cells each (about 1.22 world
+units per cell). Render meshes and physics heightfields use the same CPU
+heights. The camera's far plane and inspect movement speed are also increased
+for this world scale.
+The diffuse image is converted from linear EXR RGB to an sRGB 8-bit texture
+with mipmaps. Each chunk's UVs refer to the whole image, not a repeated tile.
+The source image resolution alone does not set heightfield sampling: the
+chunk count and `TerrainCellsPerChunk` determine how many height samples
+physics uses. Increasing the cell count retains more height detail in the
+collider; render LOD error only changes the visible mesh.
+
+`OpenExrScanlineReader` supports the provided single-part, uncompressed,
+full-resolution float EXR channels. MonoGame's standard texture importer does
+not import EXR, so the two source files are copied unchanged beside the built
+game and loaded from there. Other EXR compression, tiling, channel formats, or
+multipart files fail with a clear exception. The graphics profile is HiDef
+because the full 4096×4096 diffuse texture exceeds Reach's texture-size limit.
+Collision and render meshes stream independently. Texture blending and
+vegetation are not implemented; the diffuse image still stretches over the
+whole world, so nearby texture detail remains limited. Inspect picking can
+select a loaded terrain chunk but does not draw its enlarged-mesh outline,
+even when its collision component has streamed out. Press F3 to toggle the
+terrain collider's CPU-sampled triangle wireframe in the existing physics
+debug renderer. With Jolt this visualizes the source height grid, not Jolt's
+internal compressed representation. The wireframe is slightly raised to remain
+visible over the terrain surface; the actual collider is not moved.
