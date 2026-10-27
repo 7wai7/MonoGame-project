@@ -15,6 +15,7 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem, IRen
     private const float MinimumOrbitDistance = 0.5f;
     private const float MaximumOrbitDistance = 1_000f;
     private const float ZoomFactorPerWheelStep = 0.85f;
+    private const float ShiftMoveSpeedMultiplier = 2f;
 
     private Entity _orbitCamera = Entity.None;
     private float _orbitDistance;
@@ -133,11 +134,16 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem, IRen
         horizontalForward.Normalize();
         var right = Vector3.Cross(horizontalForward, Vector3.Up);
 
+        var keyboard = Context.Input.CurrentKeyboard;
         var movement = ReadMovement(
-            Context.Input.CurrentKeyboard,
+            keyboard,
             horizontalForward,
             right);
-        var displacement = movement * controller.MoveSpeed * deltaSeconds;
+        var moveSpeedMultiplier = keyboard.IsKeyDown(Keys.LeftShift) ||
+            keyboard.IsKeyDown(Keys.RightShift)
+            ? ShiftMoveSpeedMultiplier
+            : 1f;
+        var displacement = movement * controller.MoveSpeed * moveSpeedMultiplier * deltaSeconds;
 
         transform.Position += displacement;
         camera.Target = transform.Position + forward;

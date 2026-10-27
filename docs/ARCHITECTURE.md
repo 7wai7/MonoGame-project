@@ -111,7 +111,8 @@ diffuse texture; the scene that loaded it owns its lifetime.
 `InspectCameraController3D` is an opt-in camera controller for examining a
 scene and is independent from future character or vehicle controls. While it is
 enabled on the active camera, the mouse controls its view, WASD moves
-horizontally, and Q/E moves down or up. A left click inside the game window
+horizontally, and Q/E moves down or up. Holding either Shift key doubles the
+free-flight movement speed. A left click inside the game window
 activates this input and captures the cursor; losing focus releases it and
 requires another click.
 After selecting a mesh, C switches between free flight and orbiting that
