@@ -68,7 +68,8 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
         {
             var transform = world.Get<Transform3D>(entity);
             var renderer = world.Get<MeshRenderer>(entity);
-            if (!renderer.IsVisible || renderer.Mesh is null || renderer.Mesh.IsDisposed)
+            if (!renderer.IsVisible || !renderer.UseBasicEffect ||
+                renderer.Mesh is null || renderer.Mesh.IsDisposed)
             {
                 continue;
             }
@@ -97,7 +98,7 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
         }
     }
 
-    private static bool IsOutsideFrustum(
+    internal static bool IsOutsideFrustum(
         BoundingFrustum frustum,
         in BoundingBox localBounds,
         in Matrix worldMatrix,
@@ -151,7 +152,7 @@ public sealed class MeshRenderSystem : GameSystem, IContentSystem, IRenderSystem
         return false;
     }
 
-    private static void ValidateCamera(in Transform3D transform, in Camera3D camera)
+    internal static void ValidateCamera(in Transform3D transform, in Camera3D camera)
     {
         if (camera.FieldOfView <= 0f || camera.FieldOfView >= MathHelper.Pi)
         {

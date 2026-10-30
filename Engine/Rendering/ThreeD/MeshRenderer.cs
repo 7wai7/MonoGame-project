@@ -15,6 +15,7 @@ public struct MeshRenderer : IComponent
         Tint = tint;
         Texture = texture;
         IsVisible = true;
+        UseBasicEffect = true;
     }
 
     public Mesh Mesh;
@@ -22,4 +23,6 @@ public struct MeshRenderer : IComponent
     /// <summary>The scene owns and disposes this texture; the component only references it.</summary>
     public Texture2D? Texture;
     public bool IsVisible;
+    /// <summary>False when another render system draws this mesh with its own material.</summary>
+    public bool UseBasicEffect;
 }

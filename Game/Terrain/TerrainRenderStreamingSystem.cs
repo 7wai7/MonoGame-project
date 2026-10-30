@@ -35,7 +35,6 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
     private readonly Vector2 _textureWorldOrigin;
     private readonly Vector2 _textureWorldSize;
     private readonly List<ChunkState> _states = [];
-    private Texture2D? _texture;
     private CancellationTokenSource? _cancellation;
     private Task<MeshData>? _buildTask;
     private ChunkState? _buildingChunk;
@@ -71,17 +70,6 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         _textureWorldSize = textureWorldSize;
     }
 
-    public void SetTexture(Texture2D texture)
-    {
-        ArgumentNullException.ThrowIfNull(texture);
-        if (_contentLoaded)
-        {
-            throw new InvalidOperationException("Terrain texture cannot change while content is loaded.");
-        }
-
-        _texture = texture;
-    }
-
     protected override void OnInitialize()
     {
         foreach (var chunk in _chunks)
@@ -99,11 +87,6 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
 
     public void LoadContent(World world, ContentManager content)
     {
-        if (_texture is null)
-        {
-            throw new InvalidOperationException("Terrain diffuse must be loaded before render streaming.");
-        }
-
         _cancellation = new CancellationTokenSource();
         _streamStartedAt = Stopwatch.GetTimestamp();
         _loadedChunkCount = 0;
@@ -231,7 +214,6 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
             state.Mesh = null;
         }
 
-        _texture = null;
         _loadedChunkCount = 0;
     }
 
@@ -347,7 +329,10 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
             }
             else
             {
-                World.Add(entity, new MeshRenderer(mesh, Color.White, _texture));
+                World.Add(entity, new MeshRenderer(mesh, Color.White)
+                {
+                    UseBasicEffect = false
+                });
             }
 
             var old = state.Mesh;

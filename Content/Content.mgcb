@@ -13,3 +13,142 @@
 
 #---------------------------------- Content ---------------------------------#
 
+#begin Effects/TerrainMaterial.fx
+/importer:EffectImporter
+/processor:EffectProcessor
+/build:Effects/TerrainMaterial.fx
+
+# GPU control texture: R=grass, G=soil, B=rock, A=snow.
+# The opaque RGB TerrainControl.png is retained for visual inspection.
+#begin ../Assets/Terrains/Rugged Terrain with Rivers/Masks/TerrainControlGpu.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Terrains/Rugged Terrain with Rivers/Masks/TerrainControlGpu.png;TerrainMaterials/Control
+
+# River coverage is a separate grayscale mask.
+#begin ../Assets/Terrains/Rugged Terrain with Rivers/Masks/River.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Terrains/Rugged Terrain with Rivers/Masks/River.png;TerrainMaterials/River
+
+#begin ../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_diff_2k.jpg
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_diff_2k.jpg;TerrainMaterials/Grass
+
+#begin ../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_diff_2k.jpg
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_diff_2k.jpg;TerrainMaterials/Dirt
+
+#begin ../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_diff_2k.jpg
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_diff_2k.jpg;TerrainMaterials/Rock
+
+#begin ../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_Color.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_Color.png;TerrainMaterials/Snow
+
+# RGB stores a linear OpenGL normal; alpha stores linear roughness.
+# Keep premultiplication disabled so transparent-looking roughness values do
+# not modify the normal vector.
+#begin ../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_normal_rough_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_normal_rough_2k.png;TerrainMaterials/GrassNormalRough
+
+#begin ../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_normal_rough_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_normal_rough_2k.png;TerrainMaterials/DirtNormalRough
+
+#begin ../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_normal_rough_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_normal_rough_2k.png;TerrainMaterials/RockNormalRough
+
+#begin ../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_NormalRough.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_NormalRough.png;TerrainMaterials/SnowNormalRough
+
+# Material-local displacement maps shape the transitions; they do not move
+# terrain vertices. The shader remaps their different brightness ranges.
+#begin ../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_disp_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_disp_2k.png;TerrainMaterials/GrassHeight
+
+#begin ../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_disp_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/park_dirt_2k.blend/textures/park_dirt_disp_2k.png;TerrainMaterials/DirtHeight
+
+#begin ../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_disp_2k.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/gray_rocks_2k.blend/textures/gray_rocks_disp_2k.png;TerrainMaterials/RockHeight
+
+#begin ../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_Displacement.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=True
+/processorParam:PremultiplyAlpha=False
+/processorParam:TextureFormat=Color
+/build:../Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_Displacement.png;TerrainMaterials/SnowHeight
+

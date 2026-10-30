@@ -32,7 +32,7 @@
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.6" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Assets/Terrains/Rugged Terrain with Rivers/*.exr"
+    <None Update="Assets/Terrains/Rugged Terrain with Rivers/Rugged Terrain Height Map EXR.exr"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

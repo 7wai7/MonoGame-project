@@ -46,11 +46,8 @@ public sealed class BootstrapScene : GameScene
     private Mesh _cubeMesh = null!;
     private Mesh _sphereMesh = null!;
     private Mesh _movingPlatformMesh = null!;
-    private Texture2D? _terrainDiffuse;
     private Vector2 _terrainWorldOrigin;
     private Vector2 _terrainWorldSize;
-    private int _terrainImageWidth;
-    private int _terrainImageHeight;
 
     public BootstrapScene()
     {
@@ -76,6 +73,7 @@ public sealed class BootstrapScene : GameScene
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         StartupProfiler.Info("Physics backend: Jolt.");
         systems.Add(new PhysicsSystem(), order: 0);
+        systems.Add(new TerrainMaterialRenderSystem(), order: 995);
         systems.Add(new MeshRenderSystem(), order: 1_000);
         systems.Add(new PhysicsDebugRenderSystem(), order: 1_100);
     }
@@ -103,8 +101,6 @@ public sealed class BootstrapScene : GameScene
             $"far error {TerrainRenderFarMaxHeightError}, " +
             $"far max patch {TerrainRenderFarMaxPatchCellSpan} cells, " +
             $"collision radius {TerrainCollisionChunkRadius}.");
-        _terrainImageWidth = image.Width;
-        _terrainImageHeight = image.Height;
         _terrainWorldOrigin = new Vector2(
             TerrainFirstChunk * TerrainChunkWorldSize);
         _terrainWorldSize = new Vector2(TerrainWorldExtent);
@@ -184,17 +180,6 @@ public sealed class BootstrapScene : GameScene
     {
         try
         {
-            using (StartupProfiler.Measure("Diffuse EXR + mipmaps + GPU texture"))
-            {
-                _terrainDiffuse = ExrTerrainAssets.LoadDiffuse(
-                    context.GraphicsDevice,
-                    TerrainAssetPath("Rugged Terrain Diffuse EXR.exr"),
-                    _terrainImageWidth,
-                    _terrainImageHeight);
-            }
-
-            _terrainRenderSystem.SetTexture(_terrainDiffuse);
-
             _cubeMesh = new Mesh(
                 context.GraphicsDevice,
                 ProceduralMeshFactory.CreateBox(Vector3.One));
@@ -244,8 +229,6 @@ public sealed class BootstrapScene : GameScene
         _cubeMesh?.Dispose();
         _sphereMesh?.Dispose();
         _movingPlatformMesh?.Dispose();
-        _terrainDiffuse?.Dispose();
-        _terrainDiffuse = null;
         _cubeMesh = null!;
         _sphereMesh = null!;
         _movingPlatformMesh = null!;
