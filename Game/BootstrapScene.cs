@@ -76,12 +76,14 @@ public sealed class BootstrapScene : GameScene
         systems.Add(new TerrainMaterialRenderSystem(), order: 995);
         systems.Add(new MeshRenderSystem(), order: 1_000);
         systems.Add(new PhysicsDebugRenderSystem(), order: 1_100);
+        systems.Add(new PerformanceOverlaySystem(), order: 1_200);
     }
 
     protected override void OnInitialize(EngineContext context)
     {
         context.InputContexts.Reset(InputContexts.InspectViewport);
         World.SetResource(new GameUiTheme(context.GraphicsDevice));
+        World.SetResource(new TerrainRenderStatistics());
 
         // One image covers the finite terrain. Render LODs and colliders use
         // the same CPU height chunks but triangulate them independently.

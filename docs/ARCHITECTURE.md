@@ -260,6 +260,10 @@ Until a new LOD is ready, the previous mesh stays visible. Every LOD retains
 the full source-grid border, so neighboring meshes share edge vertices.
 Terrain outside the view is not built eagerly and may appear progressively
 after startup or a rapid camera move. Loaded meshes are frustum-culled at draw.
+F11 shows performance text with FPS, frame time, process memory, and the
+terrain chunks and triangles submitted for each render LOD. While visible, it
+also logs a five-second summary to the terminal. These are whole-frame timings
+and submitted triangle counts, not separate GPU shader measurements.
 
 `TerrainCollider3D` creates a static Jolt body for each active collision
 chunk. It does not require `PhysicsBody3D`; terrain must have unit scale and

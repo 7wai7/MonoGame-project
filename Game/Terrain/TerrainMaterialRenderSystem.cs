@@ -151,6 +151,11 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
 
     public void Draw(World world, in RenderContext context)
     {
+        var statistics = world.GetResource<TerrainRenderStatistics>();
+        if (statistics.IsEnabled)
+        {
+            statistics.Reset();
+        }
         if (_effect is null ||
             !MeshRenderSystem.TryGetActiveCamera(world, out var cameraTransform, out var camera))
         {
@@ -201,6 +206,11 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
             {
                 pass.Apply();
                 renderer.Mesh.Draw(device);
+                if (statistics.IsEnabled)
+                {
+                    statistics.Record(world.Get<TerrainRenderLodComponent>(entity).Value,
+                        renderer.Mesh.PrimitiveCount);
+                }
             }
         }
     }

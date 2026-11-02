@@ -38,7 +38,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
     private CancellationTokenSource? _cancellation;
     private Task<MeshData>? _buildTask;
     private ChunkState? _buildingChunk;
-    private RenderLod _buildingLod;
+    private TerrainRenderLod _buildingLod;
     private long _streamStartedAt;
     private int _loadedChunkCount;
     private bool _contentLoaded;
@@ -124,7 +124,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
                     continue;
                 }
 
-                Install(state, RenderLod.Near, BuildMeshData(state, RenderLod.Near));
+                Install(state, TerrainRenderLod.Near, BuildMeshData(state, TerrainRenderLod.Near));
                 initialCount++;
             }
         }
@@ -208,6 +208,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
             if (World.IsAlive(state.Chunk.Entity))
             {
                 World.Remove<MeshRenderer>(state.Chunk.Entity);
+                World.Remove<TerrainRenderLodComponent>(state.Chunk.Entity);
             }
 
             state.Mesh?.Dispose();
@@ -221,11 +222,11 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         in Vector3 cameraPosition,
         BoundingFrustum frustum,
         out ChunkState next,
-        out RenderLod lod)
+        out TerrainRenderLod lod)
     {
         ChunkState? best = null;
         var bestPriority = float.PositiveInfinity;
-        var bestLod = RenderLod.Far;
+        var bestLod = TerrainRenderLod.Far;
         foreach (var state in _states)
         {
             var distance = DistanceToChunk(cameraPosition, state.Bounds);
@@ -244,9 +245,9 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
 
             // Near ground is built exactly, matching the collision heightfield.
             // Missing middle/far chunks get a coarse surface before upgrades.
-            var buildLod = state.Mesh is null && wantedLod != RenderLod.Near
-                ? RenderLod.Far : wantedLod;
-            if (!visible && !nearCamera && buildLod != RenderLod.Far)
+            var buildLod = state.Mesh is null && wantedLod != TerrainRenderLod.Near
+                ? TerrainRenderLod.Far : wantedLod;
+            if (!visible && !nearCamera && buildLod != TerrainRenderLod.Far)
             {
                 continue;
             }
@@ -279,36 +280,36 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         return best is not null;
     }
 
-    private RenderLod SelectLod(float distance, RenderLod current)
+    private TerrainRenderLod SelectLod(float distance, TerrainRenderLod current)
     {
         var near = NearChunkRadius * _chunkWorldSize;
         var middle = MiddleChunkRadius * _chunkWorldSize;
         var hysteresis = LodHysteresis * _chunkWorldSize;
-        if (current == RenderLod.Near && distance < near + hysteresis)
+        if (current == TerrainRenderLod.Near && distance < near + hysteresis)
         {
-            return RenderLod.Near;
+            return TerrainRenderLod.Near;
         }
 
-        if (current == RenderLod.Middle &&
+        if (current == TerrainRenderLod.Middle &&
             distance >= near - hysteresis && distance < middle + hysteresis)
         {
-            return RenderLod.Middle;
+            return TerrainRenderLod.Middle;
         }
 
-        if (current == RenderLod.Far && distance >= middle - hysteresis)
+        if (current == TerrainRenderLod.Far && distance >= middle - hysteresis)
         {
-            return RenderLod.Far;
+            return TerrainRenderLod.Far;
         }
 
-        return distance < near ? RenderLod.Near :
-            distance < middle ? RenderLod.Middle : RenderLod.Far;
+        return distance < near ? TerrainRenderLod.Near :
+            distance < middle ? TerrainRenderLod.Middle : TerrainRenderLod.Far;
     }
 
-    private MeshData BuildMeshData(ChunkState state, RenderLod lod) => lod switch
+    private MeshData BuildMeshData(ChunkState state, TerrainRenderLod lod) => lod switch
     {
-        RenderLod.Near => TerrainMeshFactory.CreateFullResolution(
+        TerrainRenderLod.Near => TerrainMeshFactory.CreateFullResolution(
             state.Chunk.Heights, _textureWorldOrigin, _textureWorldSize),
-        RenderLod.Middle => TerrainMeshFactory.Create(
+        TerrainRenderLod.Middle => TerrainMeshFactory.Create(
             state.Chunk.Heights, _middleMaxHeightError,
             _textureWorldOrigin, _textureWorldSize),
         _ => TerrainMeshFactory.Create(
@@ -316,7 +317,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
             _textureWorldOrigin, _textureWorldSize, _farMaxPatchCellSpan)
     };
 
-    private void Install(ChunkState state, RenderLod lod, MeshData data)
+    private void Install(ChunkState state, TerrainRenderLod lod, MeshData data)
     {
         var mesh = new Mesh(Context.GraphicsDevice, data);
         try
@@ -333,6 +334,15 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
                 {
                     UseBasicEffect = false
                 });
+            }
+
+            if (World.Has<TerrainRenderLodComponent>(entity))
+            {
+                World.Get<TerrainRenderLodComponent>(entity).Value = lod;
+            }
+            else
+            {
+                World.Add(entity, new TerrainRenderLodComponent(lod));
             }
 
             var old = state.Mesh;
@@ -366,13 +376,11 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
             MathF.Max(0f, z) * MathF.Max(0f, z));
     }
 
-    private enum RenderLod { Near, Middle, Far }
-
     private sealed class ChunkState(TerrainChunk chunk, BoundingBox bounds)
     {
         public TerrainChunk Chunk { get; } = chunk;
         public BoundingBox Bounds { get; } = bounds;
         public Mesh? Mesh { get; set; }
-        public RenderLod Lod { get; set; } = RenderLod.Far;
+        public TerrainRenderLod Lod { get; set; } = TerrainRenderLod.Far;
     }
 }

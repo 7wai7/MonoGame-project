@@ -60,3 +60,19 @@ one GPU texture. Repack after replacing either source image:
   Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_Roughness.png \
   Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_NormalRough.png
 ```
+
+For a future material that reads albedo and material height from one RGBA
+texture, `pack_albedo_height.py` puts the source colour in RGB and displacement
+in alpha. A 16-bit height image is reduced to 8 bits for the alpha channel.
+It uses the same Python dependencies as the mask generator:
+
+```sh
+.venv/bin/python Tools/TerrainMaterials/pack_albedo_height.py \
+  Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_diff_2k.jpg \
+  Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_disp_2k.png \
+  Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_albedo_height_2k.png
+```
+
+The current material still loads separate albedo and height textures; generating
+this packed file does not change rendering until the content pipeline and shader
+are updated to use it.
