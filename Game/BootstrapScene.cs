@@ -62,7 +62,6 @@ public sealed class BootstrapScene : GameScene
 
     protected override void ConfigureSystems(SystemScheduler systems)
     {
-        systems.Add(new PauseMenuSystem(), order: -2_000);
         systems.Add(new InspectCameraControlSystem(), order: -1_000);
         systems.Add(new TerrainColliderStreamingSystem(
             _terrainChunks,
@@ -76,13 +75,18 @@ public sealed class BootstrapScene : GameScene
         systems.Add(new TerrainMaterialRenderSystem(), order: 995);
         systems.Add(new MeshRenderSystem(), order: 1_000);
         systems.Add(new PhysicsDebugRenderSystem(), order: 1_100);
-        systems.Add(new PerformanceOverlaySystem(), order: 1_200);
     }
 
     protected override void OnInitialize(EngineContext context)
     {
         context.InputContexts.Reset(InputContexts.InspectViewport);
-        World.SetResource(new GameUiTheme(context.GraphicsDevice));
+        var theme = new GameUiTheme(context.GraphicsDevice);
+        context.Ui.Scene.Own(theme);
+        var inspectSession = new InspectSessionState();
+        World.SetResource(inspectSession);
+        context.Ui.Scene.Mount(new InspectHudScreen(context, World, inspectSession, theme));
+        context.Ui.Scene.Mount(new PerformanceScreen(context, World));
+        context.Ui.Scene.MountModal(new PauseMenuScreen(context, theme));
         World.SetResource(new TerrainRenderStatistics());
 
         // One image covers the finite terrain. Render LODs and colliders use

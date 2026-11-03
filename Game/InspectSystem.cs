@@ -8,11 +8,10 @@ using MonoGame_project.Engine.Rendering.ThreeD;
 using MonoGame_project.Engine.Systems;
 using MonoGame_project.Engine.Time;
 using MonoGame_project.Game.Terrain;
-using MonoGame_project.Game.UI;
 
 namespace MonoGame_project.Game;
 
-/// <summary>Owns inspect picking, selection, HUD and the temporary mesh outline.</summary>
+/// <summary>Owns inspect picking, selection and the temporary mesh outline.</summary>
 public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, IRenderSystem
 {
     private const float OutlineScale = 1.035f;
@@ -41,7 +40,6 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
         ReferenceStencil = 1
     };
 
-    private InspectHudView _view = null!;
     private InspectSessionState _session = null!;
     private BasicEffect _outlineEffect = null!;
     private Entity _hovered = Entity.None;
@@ -49,9 +47,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
 
     protected override void OnInitialize()
     {
-        _view = new InspectHudView(World.GetResource<GameUiTheme>());
-        _session = new InspectSessionState();
-        World.SetResource(_session);
+        _session = World.GetResource<InspectSessionState>();
     }
 
     public void LoadContent(World world, ContentManager content)
@@ -82,9 +78,6 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
         var cameraEntity = Entity.None;
         var active = InputContexts.CanUseInspect(Context.InputContexts) &&
             InspectCameraControlSystem.TryGetControlledCamera(world, out cameraEntity);
-        _view.IsVisible = active;
-        _view.IsReticleVisible = Context.InputContexts.Current == InputContexts.InspectViewport;
-        _view.IsOrbiting = !_session.OrbitTarget.IsNone;
         _hovered = Entity.None;
         if (!active)
         {
@@ -111,36 +104,19 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
         }
 
         if (!world.IsAlive(_session.Selected) ||
-            !world.TryGet<Transform3D>(_session.Selected, out var selectedTransform) ||
+            !world.TryGet<Transform3D>(_session.Selected, out _) ||
             !world.TryGet<MeshRenderer>(_session.Selected, out var selectedRenderer) ||
             !selectedRenderer.IsVisible || selectedRenderer.Mesh is null ||
             selectedRenderer.Mesh.IsDisposed)
         {
             _session.Selected = Entity.None;
             _session.OrbitTarget = Entity.None;
-            _view.ClearSelection();
-            return;
         }
-
-        var wheelDelta = Context.InputContexts.Current == InputContexts.InspectCursor &&
-            _view.IsCursorOverComponentList(
-                Context.Input.CurrentMouse.Position,
-                Context.Window.ClientBounds.Width)
-            ? Context.Input.CurrentMouse.ScrollWheelValue -
-                Context.Input.PreviousMouse.ScrollWheelValue
-            : 0;
-        _view.ShowSelection(
-            _session.Selected,
-            cameraTransform.Position,
-            selectedTransform,
-            selectedRenderer,
-            world.GetComponentSnapshots(_session.Selected),
-            wheelDelta / 120);
     }
 
     public void Draw(World world, in RenderContext context)
     {
-        if (!_contentLoaded || !_view.IsVisible ||
+        if (!_contentLoaded || !InputContexts.CanUseInspect(Context.InputContexts) ||
             !MeshRenderSystem.TryGetActiveCamera(world, out var cameraTransform, out var camera))
         {
             return;
@@ -199,10 +175,7 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
 
     protected override void OnShutdown()
     {
-        World.RemoveResource<InspectSessionState>();
         _session = null!;
-        _view.Dispose();
-        _view = null!;
         _stencilOnlyBlend.Dispose();
         _markVisibleMesh.Dispose();
         _drawOutsideMesh.Dispose();

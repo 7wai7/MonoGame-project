@@ -10,9 +10,12 @@ forwards lifecycle calls to `GameEngine`.
 
 `GameEngine` owns the main loop:
 
-1. one variable-rate update (`IUpdateSystem`);
-2. zero or more fixed 60 Hz simulation ticks (`IFixedUpdateSystem`);
-3. one render pass (`IRenderSystem`) with an interpolation alpha.
+1. one UI input pass before game updates;
+2. one variable-rate update (`IUpdateSystem`);
+3. zero or more fixed 60 Hz simulation ticks (`IFixedUpdateSystem`);
+4. one UI refresh and Gum input update after simulation;
+5. one 3D render pass (`IRenderSystem`) with an interpolation alpha;
+6. one Gum draw pass above the 3D scene.
 
 Each `GameScene` owns an isolated ECS `World` and a `SystemScheduler`. Put future
 game composition in `Game/BootstrapScene.cs`, and split components and systems
@@ -59,8 +62,8 @@ the hook `PhysicsSystem` uses to remove a Jolt body immediately when its
 
 ## Input routing
 
-`InputService` reads one keyboard, mouse, and gamepad snapshot before scene
-systems update. It also owns the platform details of relative mouse input:
+`InputService` reads one keyboard, mouse, and gamepad snapshot before UI and
+scene updates. It also owns the platform details of relative mouse input:
 focus events, cursor visibility, SDL relative-mouse mode, and mouse delta. It
 does not decide which gameplay or UI feature should receive that input.
 
@@ -68,12 +71,12 @@ does not decide which gameplay or UI feature should receive that input.
 immutable description of an input layer; it is not a system and does not own
 the cursor. The context at the top of the stack determines whether the cursor
 is `Free` or `Relative`. A context with `BlocksLowerInput` also prevents systems
-associated with contexts below it from acting on the same snapshot. Systems
-call `CanReceiveInput(...)` before interpreting input for their context.
+associated with contexts below it from acting on the same snapshot. UI screens
+and game systems call `CanReceiveInput(...)` before interpreting input.
 
-The bootstrap scene resets the stack to `InspectViewport`. `PauseMenuSystem`
-handles each Escape key press and uses `PauseMenu` to release the cursor and
-block inspect camera input while its Gum view is visible:
+The bootstrap scene resets the stack to `InspectViewport`. `PauseMenuScreen`
+handles Escape before ECS systems update and uses `PauseMenu` to release the
+cursor and block inspect camera input while its dialog is visible:
 
 ```csharp
 context.InputContexts.Push(InputContexts.PauseMenu); // Free cursor; camera blocked.
@@ -86,9 +89,9 @@ processes the click. The menu currently overlays the scene; it does not pause
 the physics simulation.
 
 `GameUiTheme` creates styled Gum overlays, panels, and buttons with caller-supplied
-sizes, text, and actions. The scene stores one theme as a `World` resource, so
-its views share the same GPU textures. `PauseMenuView` only arranges these
-elements; the world disposes the theme after its systems and views shut down.
+sizes and text. Each view connects its own actions to the controls it creates.
+The theme is owned by the scene's UI scope, so views share its GPU textures and
+are detached before those textures are disposed.
 
 The stack selects a mouse mode; `InputService` owns the actual cursor capture.
 When an active window switches to `Free`, it releases capture and places the
@@ -99,6 +102,31 @@ initial startup there is no active input yet, and merely regaining focus does
 not switch modes, so those cases still require a left click inside the window.
 Scene changes clear the entire stack before the new scene initializes its root
 context.
+
+## UI composition and lifecycle
+
+`UiManager` owns Gum update, draw and UI attachment. It is a regular engine
+service, not an ECS system. `MainGame` initializes Gum before the engine and
+uninitializes it after the engine is disposed. Screens mount under one visual
+root in draw order; later screens appear above earlier ones. Modal screens
+attach to Gum's `ModalRoot` only while open, blocking other controls. Individual
+screens do not call `AddToRoot`.
+
+`GameEngine` opens a `UiScope` before initializing each scene and disposes that
+scope after the scene shuts down. The scope owns its screens and shared UI
+resources, including `GameUiTheme`; it detaches screens before disposing theme
+textures. A global scope is available for UI that must survive scene changes.
+
+Each `UiScreen` owns its visual subtree and local behavior. `UiManager` calls
+`HandleInput()` before ECS updates, `Refresh()` after ECS and physics, and
+`AfterSceneDraw()` before Gum draws. A screen may override only the phases it
+needs. `PauseMenuScreen` owns Escape, the modal input context and its Exit
+button. `PerformanceScreen` owns F11, uses `FrameRateMeter`, and updates text
+and terminal logs. `InspectHudScreen` reads `InspectSessionState` after game
+updates and changes only text rows whose contents changed. `InspectSystem`
+remains an ECS system because it owns 3D picking, selection and outline.
+No ECS system or separate model is required for a small UI screen; larger
+screens can split local code when that becomes useful.
 
 ## 3D rendering
 

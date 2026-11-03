@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGame_project.Engine.Input;
+using MonoGame_project.Engine.UI;
 
 namespace MonoGame_project.Engine;
 
@@ -17,11 +18,13 @@ public sealed class EngineContext
         GameServiceContainer services,
         InputService input,
         InputContextStack inputContexts,
-        ApplicationControl application)
+        ApplicationControl application,
+        UiManager ui)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(inputContexts);
         ArgumentNullException.ThrowIfNull(application);
+        ArgumentNullException.ThrowIfNull(ui);
         GraphicsDevice = graphicsDevice;
         Content = content;
         Window = window;
@@ -29,6 +32,7 @@ public sealed class EngineContext
         Input = input;
         InputContexts = inputContexts;
         Application = application;
+        Ui = ui;
     }
 
     public GraphicsDevice GraphicsDevice { get; }
@@ -38,4 +42,5 @@ public sealed class EngineContext
     public InputService Input { get; }
     public InputContextStack InputContexts { get; }
     public ApplicationControl Application { get; }
+    public UiManager Ui { get; }
 }

@@ -64,6 +64,8 @@ public sealed class GameEngine : IDisposable
         }
 
         _context = context;
+        _context.Ui.Initialize();
+        _context.Ui.BeginScene();
         _activeScene.Initialize(context);
         _initialized = true;
     }
@@ -114,6 +116,7 @@ public sealed class GameEngine : IDisposable
         _accumulator += elapsed;
         _lastFrameTime = new FrameTime(elapsed, _frameTotal, _frameNumber++);
 
+        _context.Ui.HandleInput();
         _activeScene.Update(_lastFrameTime);
 
         while (_accumulator >= _fixedTimeStep)
@@ -123,6 +126,8 @@ public sealed class GameEngine : IDisposable
             _activeScene.FixedUpdate(fixedTime);
             _accumulator -= _fixedTimeStep;
         }
+
+        _context.Ui.Refresh(gameTime, _context.Input.HasActiveInput);
     }
 
     public void Draw(GameTime gameTime, SpriteBatch spriteBatch)
@@ -138,6 +143,7 @@ public sealed class GameEngine : IDisposable
             InterpolationAlpha);
 
         _activeScene.Draw(renderContext);
+        _context.Ui.Draw();
     }
 
     public void UnloadContent()
@@ -167,6 +173,8 @@ public sealed class GameEngine : IDisposable
             _context.InputContexts.Clear();
         }
 
+        _context?.Ui.Dispose();
+
         _context = null!;
         _initialized = false;
         _disposed = true;
@@ -183,8 +191,10 @@ public sealed class GameEngine : IDisposable
         _pendingScene = null!;
 
         _activeScene.Dispose();
+        _context!.Ui.EndScene();
         _context!.InputContexts.Clear();
         _activeScene = nextScene;
+        _context.Ui.BeginScene();
         _activeScene.Initialize(_context!);
         if (_contentLoaded)
         {

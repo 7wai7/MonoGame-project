@@ -10,12 +10,14 @@ sequenceDiagram
     participant E as GameEngine
     participant S as GameScene
     participant SS as SystemScheduler
+    participant UI as UiManager
 
     P->>M: new MainGame()
     M->>E: new GameEngine(BootstrapScene, fixedStep, maxFrameTime)
     P->>M: Run()
     M->>M: Initialize()
     M->>E: Initialize(EngineContext)
+    E->>UI: Initialize() і BeginScene()
     E->>S: Initialize(context)
     S->>S: ConfigureSystems()
     S->>SS: Initialize(World, context)
@@ -27,10 +29,13 @@ sequenceDiagram
 
     loop Поки вікно відкрите
         M->>E: Update(gameTime)
+        E->>UI: HandleInput() для екранів
         E->>S: Update(FrameTime)
         E->>S: FixedUpdate(FixedTime) 0..N разів
+        E->>UI: Refresh() екранів; Gum.Update(gameTime)
         M->>E: Draw(gameTime, spriteBatch)
         E->>S: Draw(RenderContext)
+        E->>UI: AfterSceneDraw(); Gum.Draw()
     end
 
     M->>E: UnloadContent()
@@ -39,6 +44,7 @@ sequenceDiagram
     E->>S: Dispose()
     S->>SS: Shutdown()
     S->>S: World.Dispose()
+    E->>UI: Dispose scene scope and root
 ~~~
 
 Важлива деталь: **MainGame.Initialize** спочатку ініціалізує GameEngine і лише
@@ -57,39 +63,44 @@ flowchart TD
     D --> F
     E --> F
     F --> G["створити FrameTime"]
-    G --> H["Scene.Update<br/>усі IUpdateSystem"]
+    G --> U["UiManager.HandleInput<br/>Escape, F11"]
+    U --> H["Scene.Update<br/>усі IUpdateSystem"]
     H --> I{"accumulator >= fixedStep?"}
     I -->|"так"| J["створити FixedTime"]
     J --> K["Scene.FixedUpdate<br/>усі IFixedUpdateSystem"]
     K --> L["accumulator -= fixedStep"]
     L --> I
-    I -->|"ні"| M["Update завершено"]
+    I -->|"ні"| M["UI екрани читають новий стан<br/>Gum обробляє введення"]
     M --> N["alpha = accumulator / fixedStep"]
     N --> O["під час Draw створити RenderContext"]
     O --> P["Scene.Draw<br/>усі IRenderSystem"]
+    P --> Q["UI AfterSceneDraw<br/>Gum.Draw поверх сцени"]
 
     classDef engine fill:#dbeafe,stroke:#2563eb,color:#172554
     classDef update fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
     classDef physics fill:#fee2e2,stroke:#dc2626,color:#450a0a
     classDef render fill:#dcfce7,stroke:#16a34a,color:#052e16
-    class A,B,C,D,E,F,G,M engine
+    class A,B,C,D,E,F,G,M,U engine
     class H update
     class I,J,K,L physics
-    class N,O,P render
+    class N,O,P,Q render
 ~~~
 
 ### Порядок одного кадру
 
 1. MonoGame викликає **MainGame.Update**.
-2. MainGame перевіряє Escape і передає GameTime у GameEngine.
+2. GameEngine робить один знімок введення; UiManager викликає HandleInput
+   екранів. PauseMenuScreen обробляє Escape до оновлення камери.
 3. GameEngine обмежує надто великий elapsed значенням MaximumFrameTime. Це
    не дозволяє після паузи виконати сотні фізичних кроків.
 4. Час додається в **accumulator**.
 5. Спочатку виконується один змінний **Scene.Update**.
 6. Поки в accumulator є хоча б один fixedStep, виконується **Scene.FixedUpdate**.
 7. Невикористаний залишок часу залишається до наступного кадру.
-8. Коли MonoGame викликає Draw, рушій рахує **InterpolationAlpha**.
-9. RenderSystem використовує alpha, щоб намалювати проміжну фізичну позу.
+8. UiManager оновлює екрани зі стану світу і викликає Gum.Update.
+9. Коли MonoGame викликає Draw, рушій рахує **InterpolationAlpha**.
+10. RenderSystem використовує alpha, щоб намалювати проміжну фізичну позу.
+11. Екрани виконують AfterSceneDraw; Gum малює UI поверх сцени.
 
 Зараз fixedStep дорівнює приблизно **16.667 ms**, тобто фізика працює на
 частоті 60 Hz.
@@ -144,8 +155,8 @@ PhysicsSystem:
 ChangeScene не замінює сцену посеред виконання систем. Вона записує
 **pendingScene**, а GameEngine застосовує її на початку наступного Update:
 
-1. знищує стару сцену;
-2. встановлює нову;
+1. знищує стару сцену та її UI scope;
+2. встановлює нову й відкриває новий UI scope;
 3. викликає Initialize;
 4. викликає LoadContent, якщо content рушія вже завантажений;
 5. обнуляє accumulator, щоб нова сцена не успадкувала старий фізичний час.

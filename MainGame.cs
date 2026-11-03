@@ -8,6 +8,7 @@ using MonoGame_project.Configuration;
 using MonoGame_project.Engine;
 using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Input;
+using MonoGame_project.Engine.UI;
 using MonoGame_project.Game;
 
 namespace MonoGame_project;
@@ -64,7 +65,8 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
                 Services,
                 _input,
                 _inputContexts,
-                _application);
+                _application,
+                new UiManager(GumUI));
 
             _engine.Initialize(context);
         }
@@ -103,10 +105,6 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     private void UpdateFrame(GameTime gameTime)
     {
         _engine.Update(gameTime);
-        if (_input.HasActiveInput)
-        {
-            GumUI.Update(gameTime);
-        }
 
         if (_application.ExitRequested)
         {
@@ -138,7 +136,6 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         GraphicsDevice.Clear(_settings.ClearColor);
 
         _engine.Draw(gameTime, _spriteBatch!);
-        GumUI.Draw();
         base.Draw(gameTime);
     }
 

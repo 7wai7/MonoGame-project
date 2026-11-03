@@ -5,12 +5,15 @@ using Gum.Managers;
 using Gum.Wireframe;
 using Microsoft.Xna.Framework;
 using MonoGame_project.Ecs;
+using MonoGame_project.Engine;
+using MonoGame_project.Engine.Input;
 using MonoGame_project.Engine.Rendering.ThreeD;
+using MonoGame_project.Engine.UI;
 
 namespace MonoGame_project.Game.UI;
 
-/// <summary>Inspect reticle and a virtualized, read-only component inspector.</summary>
-public sealed class InspectHudView : IDisposable
+/// <summary>Reticle and selected-entity details; picking stays in InspectSystem.</summary>
+internal sealed class InspectHudScreen : UiScreen
 {
     private const int VisibleRows = 19;
     private const float PanelRightMargin = 20f;
@@ -24,6 +27,9 @@ public sealed class InspectHudView : IDisposable
     private static readonly Color MutedColor = new(137, 151, 163);
     private static readonly Dictionary<Type, MemberInfo[]> MemberCache = new();
 
+    private readonly EngineContext _context;
+    private readonly World _world;
+    private readonly InspectSessionState _session;
     private readonly ContainerRuntime _root = new();
     private readonly CircleRuntime _reticle;
     private readonly ContainerRuntime _panel;
@@ -35,14 +41,19 @@ public sealed class InspectHudView : IDisposable
     private readonly TextRuntime _footerText;
     private readonly TextRuntime[] _rows = new TextRuntime[VisibleRows];
     private readonly List<InspectorRow> _allRows = [];
-    private int _scrollOffset;
+    private readonly InspectorRow[] _visibleRows = new InspectorRow[VisibleRows];
     private Entity _displayedEntity = Entity.None;
-    private bool _disposed;
+    private int _scrollOffset;
 
-    public InspectHudView(GameUiTheme theme)
+    public InspectHudScreen(EngineContext context, World world,
+        InspectSessionState session, GameUiTheme theme)
     {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _world = world ?? throw new ArgumentNullException(nameof(world));
+        _session = session ?? throw new ArgumentNullException(nameof(session));
         ArgumentNullException.ThrowIfNull(theme);
         _root.Dock(Dock.Fill);
+        _root.Visible = false;
 
         _reticle = new CircleRuntime
         {
@@ -59,6 +70,7 @@ public sealed class InspectHudView : IDisposable
         _panel.Anchor(Anchor.TopRight);
         _panel.X = -PanelRightMargin;
         _panel.Y = PanelTopMargin;
+        _panel.Visible = false;
         _root.Children.Add(_panel);
 
         AddText("OBJECT INSPECTOR", 18f, 16f, 16f, HeadingColor);
@@ -67,32 +79,99 @@ public sealed class InspectHudView : IDisposable
         _positionText = AddText("", 18f, 100f, 14f, MutedColor);
         _meshText = AddText("", 18f, 124f, 14f, MutedColor);
         _componentCountText = AddText("", 18f, 153f, 14f, HeadingColor);
-
-        for (var index = 0; index < VisibleRows; index++)
+        for (var index = 0; index < _rows.Length; index++)
         {
-            _rows[index] = AddText("", ListLeftInset, ListTopInset + index * RowHeight, 13f, TextColor);
+            _rows[index] = AddText("", ListLeftInset,
+                ListTopInset + index * RowHeight, 13f, TextColor);
         }
 
         _footerText = AddText("", 18f, 605f, 12f, MutedColor);
-        _panel.Visible = false;
-        _root.Visible = false;
-        _root.AddToRoot();
     }
 
-    public bool IsVisible
+    public override GraphicalUiElement Visual => _root;
+
+    public override void Refresh()
     {
-        get => _root.Visible;
-        set => _root.Visible = value;
+        var cameraEntity = Entity.None;
+        var active = InputContexts.CanUseInspect(_context.InputContexts) &&
+            InspectCameraControlSystem.TryGetControlledCamera(_world, out cameraEntity);
+        _root.Visible = active;
+        _reticle.Visible = _context.InputContexts.Current == InputContexts.InspectViewport;
+        if (!active)
+        {
+            return;
+        }
+
+        if (!_world.IsAlive(_session.Selected) ||
+            !_world.TryGet<Transform3D>(_session.Selected, out var transform) ||
+            !_world.TryGet<MeshRenderer>(_session.Selected, out var renderer) ||
+            !renderer.IsVisible || renderer.Mesh is null || renderer.Mesh.IsDisposed)
+        {
+            _displayedEntity = Entity.None;
+            _panel.Visible = false;
+            return;
+        }
+
+        var wheelDelta = _context.InputContexts.Current == InputContexts.InspectCursor &&
+            IsCursorOverComponentList(_context.Input.CurrentMouse.Position,
+                _context.Window.ClientBounds.Width)
+            ? _context.Input.CurrentMouse.ScrollWheelValue -
+                _context.Input.PreviousMouse.ScrollWheelValue
+            : 0;
+        ShowSelection(_session.Selected,
+            _world.Get<Transform3D>(cameraEntity).Position,
+            transform, renderer,
+            _world.GetComponentSnapshots(_session.Selected),
+            wheelDelta / 120, !_session.OrbitTarget.IsNone);
     }
 
-    public bool IsReticleVisible
+    private void ShowSelection(Entity entity, Vector3 cameraPosition,
+        Transform3D transform, MeshRenderer renderer,
+        IReadOnlyList<ComponentSnapshot> components, int scrollSteps, bool isOrbiting)
     {
-        set => _reticle.Visible = value;
+        if (_displayedEntity != entity)
+        {
+            _displayedEntity = entity;
+            _scrollOffset = 0;
+        }
+
+        _panel.Visible = true;
+        SetText(_entityText, $"Entity {entity.Id}  /  generation {entity.Generation}");
+        SetText(_distanceText,
+            $"Distance  {Format(Vector3.Distance(cameraPosition, transform.Position))} m");
+        SetText(_positionText, $"Position  {Format(transform.Position)}");
+        SetText(_meshText,
+            $"Mesh  {renderer.Mesh.VertexCount} vertices / {renderer.Mesh.PrimitiveCount} triangles");
+        SetText(_componentCountText, $"COMPONENTS  {components.Count}");
+
+        BuildRows(components);
+        _scrollOffset = Math.Clamp(_scrollOffset - scrollSteps, 0,
+            Math.Max(0, _allRows.Count - VisibleRows));
+        for (var index = 0; index < VisibleRows; index++)
+        {
+            var rowIndex = _scrollOffset + index;
+            var row = rowIndex < _allRows.Count ? _allRows[rowIndex] : default;
+            if (_visibleRows[index] == row)
+            {
+                continue;
+            }
+
+            _visibleRows[index] = row;
+            SetText(_rows[index], row.Text ?? "");
+            _rows[index].Color = row.IsHeading ? HeadingColor : TextColor;
+        }
+
+        var modeHint = isOrbiting ? "C FREE" : "C FOLLOW";
+        var visibleRange = $"{_scrollOffset + 1}-{Math.Min(_scrollOffset + VisibleRows, _allRows.Count)}/{_allRows.Count}";
+        var footer = _allRows.Count > VisibleRows
+            ? $"{modeHint}  •  CTRL+HOVER+WHEEL  {visibleRange}"
+            : isOrbiting
+                ? "C FREE CAMERA  •  WHEEL ZOOM  •  CTRL CURSOR"
+                : "C FOLLOW  •  HOLD LEFT CTRL FOR CURSOR";
+        SetText(_footerText, footer);
     }
 
-    public bool IsOrbiting { get; set; }
-
-    public bool IsCursorOverComponentList(Point mousePosition, int viewportWidth)
+    private bool IsCursorOverComponentList(Point mousePosition, int viewportWidth)
     {
         if (!_root.Visible || !_panel.Visible)
         {
@@ -102,69 +181,7 @@ public sealed class InspectHudView : IDisposable
         var left = viewportWidth - PanelRightMargin - _panel.Width + ListLeftInset;
         var top = PanelTopMargin + ListTopInset;
         return mousePosition.X >= left && mousePosition.X < left + ListWidth &&
-            mousePosition.Y >= top && mousePosition.Y < top + VisibleRows * RowHeight;
-    }
-
-    public void ShowSelection(
-        Entity entity,
-        Vector3 cameraPosition,
-        Transform3D transform,
-        MeshRenderer renderer,
-        IReadOnlyList<ComponentSnapshot> components,
-        int scrollSteps)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_displayedEntity != entity)
-        {
-            _displayedEntity = entity;
-            _scrollOffset = 0;
-        }
-
-        _panel.Visible = true;
-        SetText(_entityText, $"Entity {entity.Id}  /  generation {entity.Generation}");
-        SetText(_distanceText, $"Distance  {Format(Vector3.Distance(cameraPosition, transform.Position))} m");
-        SetText(_positionText, $"Position  {Format(transform.Position)}");
-        SetText(_meshText, $"Mesh  {renderer.Mesh.VertexCount} vertices / {renderer.Mesh.PrimitiveCount} triangles");
-        SetText(_componentCountText, $"COMPONENTS  {components.Count}");
-
-        BuildRows(components);
-        _scrollOffset = Math.Clamp(_scrollOffset - scrollSteps, 0, Math.Max(0, _allRows.Count - VisibleRows));
-        for (var index = 0; index < VisibleRows; index++)
-        {
-            var rowIndex = _scrollOffset + index;
-            var row = rowIndex < _allRows.Count ? _allRows[rowIndex] : default;
-            SetText(_rows[index], row.Text ?? "");
-            var color = row.IsHeading ? HeadingColor : TextColor;
-            if (_rows[index].Color != color)
-            {
-                _rows[index].Color = color;
-            }
-        }
-
-        var modeHint = IsOrbiting ? "C FREE" : "C FOLLOW";
-        var visibleRange = $"{_scrollOffset + 1}-{Math.Min(_scrollOffset + VisibleRows, _allRows.Count)}/{_allRows.Count}";
-        SetText(_footerText, _allRows.Count > VisibleRows
-            ? $"{modeHint}  •  CTRL+HOVER+WHEEL  {visibleRange}"
-            : IsOrbiting
-                ? "C FREE CAMERA  •  WHEEL ZOOM  •  CTRL CURSOR"
-                : "C FOLLOW  •  HOLD LEFT CTRL FOR CURSOR");
-    }
-
-    public void ClearSelection()
-    {
-        _displayedEntity = Entity.None;
-        _panel.Visible = false;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _root.RemoveFromRoot();
-        _disposed = true;
+            mousePosition.Y >= top && mousePosition.Y < top + _rows.Length * RowHeight;
     }
 
     private TextRuntime AddText(string value, float x, float y, float size, Color color)
@@ -187,9 +204,9 @@ public sealed class InspectHudView : IDisposable
 
     private void BuildRows(IReadOnlyList<ComponentSnapshot> components)
     {
+        Console.WriteLine("BuildRows");
         _allRows.Clear();
-        var ordered = components.OrderBy(component => component.Type.Name);
-        foreach (var component in ordered)
+        foreach (var component in components.OrderBy(component => component.Type.Name))
         {
             _allRows.Add(new InspectorRow(component.Type.Name, true));
             var members = GetMembers(component.Type);
@@ -229,6 +246,14 @@ public sealed class InspectHudView : IDisposable
         return members;
     }
 
+    private static void SetText(TextRuntime target, string value)
+    {
+        if (target.Text != value)
+        {
+            target.Text = value;
+        }
+    }
+
     private static string Format(object? value) => value switch
     {
         null => "null",
@@ -242,14 +267,6 @@ public sealed class InspectHudView : IDisposable
         bool flag => flag ? "true" : "false",
         _ => value.ToString() ?? ""
     };
-
-    private static void SetText(TextRuntime target, string value)
-    {
-        if (target.Text != value)
-        {
-            target.Text = value;
-        }
-    }
 
     private readonly record struct InspectorRow(string? Text, bool IsHeading);
 }

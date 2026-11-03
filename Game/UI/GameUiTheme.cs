@@ -93,13 +93,11 @@ public sealed class GameUiTheme : IDisposable
         string text,
         float width,
         float height,
-        Action onClick,
         int chamferSize = DefaultChamferSize,
         int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(text);
-        ArgumentNullException.ThrowIfNull(onClick);
         ValidateSize(width, height);
         ValidateFrameSize(chamferSize, borderThickness);
         var texture = GetFrameTexture(new FrameTextureSpec(
@@ -124,7 +122,6 @@ public sealed class GameUiTheme : IDisposable
         visual.FocusedIndicator.Visible = false;
         visual.TextInstance.FontSize = 16f;
         visual.TextInstance.UseFontSmoothing = true;
-        button.Click += (_, _) => onClick();
         return button;
     }
 
