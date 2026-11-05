@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Gum.GueDeriving;
 using Gum.Managers;
 using Gum.Wireframe;
@@ -32,6 +33,11 @@ internal sealed class PerformanceScreen : UiScreen
     private readonly TextRuntime _memory;
     private readonly TextRuntime _heap;
     private int _viewportWidth;
+    private string? _captureLabel;
+    private long _lastCaptureDrawAt;
+    private int _captureFrames;
+    private double _captureTotalMilliseconds;
+    private double _captureMaximumMilliseconds;
 
     public PerformanceScreen(EngineContext context, World world)
     {
@@ -57,7 +63,8 @@ internal sealed class PerformanceScreen : UiScreen
 
     public override void HandleInput()
     {
-        if (!_context.Input.HasActiveInput || !_context.Input.WasKeyPressed(Keys.F11))
+        if (_captureLabel is not null || !_context.Input.HasActiveInput ||
+            !_context.Input.WasKeyPressed(Keys.F11))
         {
             return;
         }
@@ -87,6 +94,10 @@ internal sealed class PerformanceScreen : UiScreen
         }
 
         _meter.Record(out var display, out var log);
+        if (_captureLabel is not null)
+        {
+            RecordCaptureFrame();
+        }
         var terrain = _world.GetResource<TerrainRenderStatistics>();
         if (display is { } sample)
         {
@@ -110,6 +121,78 @@ internal sealed class PerformanceScreen : UiScreen
                 $"max {logSample.MaximumMilliseconds:F2}ms; " +
                 $"{ProcessMemorySnapshot.Capture()}; {terrain.ToLogString()}.");
         }
+    }
+
+    /// <summary>Starts a fixed-view benchmark using the same UI as F11.</summary>
+    public void BeginCapture(string label)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        if (_captureLabel is not null)
+        {
+            throw new InvalidOperationException("A performance capture is already running.");
+        }
+
+        _captureLabel = label;
+        _captureFrames = 0;
+        _captureTotalMilliseconds = 0d;
+        _captureMaximumMilliseconds = 0d;
+        _lastCaptureDrawAt = 0;
+        _root.Visible = true;
+        _world.GetResource<TerrainRenderStatistics>().IsEnabled = true;
+        _meter.Reset();
+        Console.WriteLine($"[benchmark] START {label}; F11 statistics reset.");
+    }
+
+    public void EndCapture()
+    {
+        if (_captureLabel is null)
+        {
+            throw new InvalidOperationException("No performance capture is running.");
+        }
+
+        var average = _captureFrames == 0
+            ? 0d : _captureTotalMilliseconds / _captureFrames;
+        var fps = average > 0d ? 1_000d / average : 0d;
+        Console.WriteLine(
+            $"[benchmark] END {_captureLabel}: {_captureFrames} frames, " +
+            $"{fps:F1} FPS, frame avg {average:F2}ms, " +
+            $"max {_captureMaximumMilliseconds:F2}ms; " +
+            $"{_world.GetResource<TerrainRenderStatistics>().ToLogString()}.");
+        StopCapture();
+    }
+
+    public void CancelCapture()
+    {
+        if (_captureLabel is null)
+        {
+            return;
+        }
+
+        Console.WriteLine($"[benchmark] CANCEL {_captureLabel}; partial frames discarded.");
+        StopCapture();
+    }
+
+    private void RecordCaptureFrame()
+    {
+        var now = Stopwatch.GetTimestamp();
+        if (_lastCaptureDrawAt != 0)
+        {
+            var frameMs = Stopwatch.GetElapsedTime(_lastCaptureDrawAt, now).TotalMilliseconds;
+            _captureFrames++;
+            _captureTotalMilliseconds += frameMs;
+            _captureMaximumMilliseconds = Math.Max(_captureMaximumMilliseconds, frameMs);
+        }
+
+        _lastCaptureDrawAt = now;
+    }
+
+    private void StopCapture()
+    {
+        _captureLabel = null;
+        _root.Visible = false;
+        _world.GetResource<TerrainRenderStatistics>().IsEnabled = false;
+        _lastCaptureDrawAt = 0;
+        _meter.Reset();
     }
 
     private TextRuntime AddText(string value, float y)

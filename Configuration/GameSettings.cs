@@ -13,7 +13,7 @@ public sealed record GameSettings
     public string WindowTitle { get; init; } = "MonoGame Project";
     public int BackBufferWidth { get; init; } = 1280;
     public int BackBufferHeight { get; init; } = 720;
-    public bool VSync { get; init; } = true;
+    public bool VSync { get; init; } = false;
     public Color ClearColor { get; init; } = new(22, 24, 31);
 
     /// <summary>Simulation frequency. Rendering remains variable-rate.</summary>

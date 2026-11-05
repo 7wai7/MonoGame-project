@@ -43,6 +43,10 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
     private int _loadedChunkCount;
     private bool _contentLoaded;
 
+    /// <summary>Freezes installed meshes during a repeatable render benchmark.</summary>
+    public bool IsPaused { get; set; }
+    public bool HasRunningBuild => _buildTask is { IsCompleted: false };
+
     public TerrainRenderStreamingSystem(
         IReadOnlyList<TerrainChunk> chunks,
         float chunkWorldSize,
@@ -135,7 +139,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
 
     public void Update(World world, in FrameTime time)
     {
-        if (!_contentLoaded ||
+        if (!_contentLoaded || IsPaused ||
             !MeshRenderSystem.TryGetActiveCamera(world, out var cameraTransform, out var camera))
         {
             return;
@@ -216,6 +220,39 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         }
 
         _loadedChunkCount = 0;
+        IsPaused = false;
+    }
+
+    /// <summary>Counts chunks in the current frustum whose requested LOD is installed.</summary>
+    public (int Visible, int Ready) GetVisibleReadiness()
+    {
+        if (!MeshRenderSystem.TryGetActiveCamera(World, out var transform, out var camera))
+        {
+            return (0, 0);
+        }
+
+        var view = Matrix.CreateLookAt(transform.Position, camera.Target, camera.Up);
+        var projection = Matrix.CreatePerspectiveFieldOfView(camera.FieldOfView,
+            Context.GraphicsDevice.Viewport.AspectRatio, camera.NearPlane, camera.FarPlane);
+        var frustum = new BoundingFrustum(view * projection);
+        var visible = 0;
+        var ready = 0;
+        foreach (var state in _states)
+        {
+            if (!IsPotentiallyVisible(frustum, state.Bounds))
+            {
+                continue;
+            }
+
+            visible++;
+            var distance = DistanceToChunk(transform.Position, state.Bounds);
+            if (state.Mesh is not null && state.Lod == SelectLod(distance, state.Lod))
+            {
+                ready++;
+            }
+        }
+
+        return (visible, ready);
     }
 
     private bool TryFindNext(
@@ -230,7 +267,7 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         foreach (var state in _states)
         {
             var distance = DistanceToChunk(cameraPosition, state.Bounds);
-            var visible = frustum.Intersects(state.Bounds);
+            var visible = IsPotentiallyVisible(frustum, state.Bounds);
             var nearCamera = distance < 2f * _chunkWorldSize;
             if (!visible && !nearCamera && state.Mesh is null)
             {
@@ -374,6 +411,17 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         var z = MathF.Max(bounds.Min.Z - position.Z, position.Z - bounds.Max.Z);
         return MathF.Sqrt(MathF.Max(0f, x) * MathF.Max(0f, x) +
             MathF.Max(0f, z) * MathF.Max(0f, z));
+    }
+
+    private static bool IsPotentiallyVisible(BoundingFrustum frustum,
+        in BoundingBox bounds)
+    {
+        // TerrainMaterialRenderSystem culls mesh bounding spheres. Use a
+        // conservative sphere here too, so "ready" includes every chunk that
+        // the draw pass may submit near the frustum edge.
+        var center = (bounds.Min + bounds.Max) * 0.5f;
+        var sphere = new BoundingSphere(center, Vector3.Distance(center, bounds.Max));
+        return frustum.Contains(sphere) != ContainmentType.Disjoint;
     }
 
     private sealed class ChunkState(TerrainChunk chunk, BoundingBox bounds)

@@ -37,9 +37,13 @@ public sealed class BootstrapScene : GameScene
     private const float TerrainRenderFarMaxHeightError = 8f;
     private const int TerrainRenderFarMaxPatchCellSpan = 16;
     private const int TerrainCollisionChunkRadius = 1;
+    // Enable only for temporary, repeatable terrain material measurements.
+    private static readonly bool RunTerrainBenchmark = false;
 
     private readonly List<TerrainChunk> _terrainChunks = [];
     private readonly TerrainRenderStreamingSystem _terrainRenderSystem;
+    private readonly TerrainMaterialRenderSystem _terrainMaterialSystem = new();
+    private readonly TerrainBenchmarkSystem _benchmarkSystem;
     private Entity _cube = Entity.None;
     private Entity _sphere = Entity.None;
     private Entity _movingPlatform = Entity.None;
@@ -58,10 +62,16 @@ public sealed class BootstrapScene : GameScene
             TerrainRenderFarMaxPatchCellSpan,
             new Vector2(TerrainFirstChunk * TerrainChunkWorldSize),
             new Vector2(TerrainWorldExtent));
+        _benchmarkSystem = new TerrainBenchmarkSystem(
+            _terrainRenderSystem, _terrainMaterialSystem);
     }
 
     protected override void ConfigureSystems(SystemScheduler systems)
     {
+        if (RunTerrainBenchmark)
+        {
+            systems.Add(_benchmarkSystem, order: -1_500);
+        }
         systems.Add(new InspectCameraControlSystem(), order: -1_000);
         systems.Add(new TerrainColliderStreamingSystem(
             _terrainChunks,
@@ -72,7 +82,7 @@ public sealed class BootstrapScene : GameScene
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         StartupProfiler.Info("Physics backend: Jolt.");
         systems.Add(new PhysicsSystem(), order: 0);
-        systems.Add(new TerrainMaterialRenderSystem(), order: 995);
+        systems.Add(_terrainMaterialSystem, order: 995);
         systems.Add(new MeshRenderSystem(), order: 1_000);
         systems.Add(new PhysicsDebugRenderSystem(), order: 1_100);
     }
@@ -85,7 +95,8 @@ public sealed class BootstrapScene : GameScene
         var inspectSession = new InspectSessionState();
         World.SetResource(inspectSession);
         context.Ui.Scene.Mount(new InspectHudScreen(context, World, inspectSession, theme));
-        context.Ui.Scene.Mount(new PerformanceScreen(context, World));
+        var performance = new PerformanceScreen(context, World);
+        context.Ui.Scene.Mount(performance);
         context.Ui.Scene.MountModal(new PauseMenuScreen(context, theme));
         World.SetResource(new TerrainRenderStatistics());
 
@@ -119,7 +130,7 @@ public sealed class BootstrapScene : GameScene
 
         var camera = World.CreateEntity();
         World.Add(camera, new Transform3D(new Vector3(
-            0f, terrain.SampleHeight(100f, 200f) + 120f, 0f)));
+            -100f, terrain.SampleHeight(100f, 200f) + 120f, 0f)));
         World.Add(camera, new Camera3D(new Vector3(
             0f, terrain.SampleHeight(0f, -500f) + 20f, -500f))
         {
@@ -130,6 +141,10 @@ public sealed class BootstrapScene : GameScene
             moveSpeed: 60f,
             mouseSensitivity: 0.0025f,
             pitchLimit: MathHelper.ToRadians(89f)));
+        if (RunTerrainBenchmark)
+        {
+            _benchmarkSystem.Configure(camera, terrain.SampleHeight, performance);
+        }
 
         using (StartupProfiler.Measure("Terrain height fields + ECS entities"))
         {

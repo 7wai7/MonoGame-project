@@ -1,14 +1,14 @@
 # Terrain material masks
 
-The offline generator creates editable grayscale `Grass.png`, `Soil.png`,
-`Rock.png`, `River.png`, and `Snow.png` masks from the terrain height EXR. Only
+The offline generator creates editable grayscale `Grass.png`, `Rock.png`,
+`River.png`, and `Snow.png` masks from the terrain height EXR. Only
 the initial river suggestion uses the downloaded diffuse EXR. The game does
 not load that diffuse map. Black in a mask means zero coverage; white means
-full coverage. Grass, soil, and rock cover the underlying ground, while river
+full coverage. Grass and rock cover the underlying ground, while river
 and snow are separate layers.
 
 From the repository root, install the offline dependencies and generate all
-five masks when setting up a new terrain:
+four masks when setting up a new terrain:
 
 ```sh
 python3 -m venv .venv
@@ -16,8 +16,8 @@ python3 -m venv .venv
 .venv/bin/python Tools/TerrainMasks/generate.py
 ```
 
-For this terrain, the original four masks already existed. Generate only the
-initial snow suggestion without replacing hand-painted ground or river masks:
+To regenerate only an initial snow suggestion without replacing hand-painted
+ground or river masks:
 
 ```sh
 .venv/bin/python Tools/TerrainMasks/generate.py --snow-only
@@ -29,21 +29,27 @@ snowline, use `--snow-only --snowline 430 --force`. This overwrites any manual
 edits to `Snow.png`.
 
 Open `Assets/Terrains/Rugged Terrain with Rivers/Masks/TerrainControlPreview.png`
-to inspect the distribution. Edit the five grayscale PNGs at the same
-4096×4096 size and alignment. Then repack without changing those edits:
+to inspect the distribution. The previous soil coverage was merged into
+`Grass.png`; there is no separate soil material or soil mask. Edit the four
+grayscale PNGs at the same 4096×4096 size and alignment. Then repack without
+changing those edits:
 
 ```sh
 .venv/bin/python Tools/TerrainMasks/generate.py --pack-only
 ```
 
-`TerrainControl.png` is an opaque visual RGB version of grass, soil, and rock.
-`TerrainControlGpu.png` is derived RGBA data for the shader: R=grass, G=soil,
-B=rock, A=snow. Its transparent appearance in image viewers is expected;
+`TerrainControl.png` is an opaque RGB packing of grass and rock; use
+`TerrainControlPreview.png` for an intuitive colour preview.
+`TerrainControlGpu.png` is derived RGBA data for the shader: R=grass, G=rock,
+B=unused, A=snow. Its transparent appearance in image viewers is expected;
 do not edit it directly. The MonoGame content entry disables alpha
 premultiplication, preserving RGB even where snow coverage is zero. The
 river remains in `River.png`, so it can be edited independently. All masks
 share the heightmap's world UVs. Press F4 in inspect mode for material and
 mask diagnostics.
+F10 cycles hex-tiling for all materials, grass only, and off to compare its
+appearance and cost with ordinary tiling. F11 shows FPS, frame time and memory at the left side of the
+viewport and prints a five-second performance summary to the terminal.
 
 `generate.py` refuses to overwrite editable masks without `--force`.
 The default world and height scales match `BootstrapScene`; pass
@@ -61,9 +67,10 @@ one GPU texture. Repack after replacing either source image:
   Assets/Textures/Snow006_2K-PNG/Snow006_2K-PNG_NormalRough.png
 ```
 
-For a future material that reads albedo and material height from one RGBA
-texture, `pack_albedo_height.py` puts the source colour in RGB and displacement
-in alpha. A 16-bit height image is reduced to 8 bits for the alpha channel.
+Grass, rock and snow each use one RGBA albedo texture: RGB is the
+original colour, and A is material-local height used at boundaries. The
+source colour and displacement images remain untouched. Rebuild a derived
+8-bit RGBA PNG with `pack_albedo_height.py` after replacing either source.
 It uses the same Python dependencies as the mask generator:
 
 ```sh
@@ -73,6 +80,7 @@ It uses the same Python dependencies as the mask generator:
   Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_albedo_height_2k.png
 ```
 
-The current material still loads separate albedo and height textures; generating
-this packed file does not change rendering until the content pipeline and shader
-are updated to use it.
+Use the same command for rock and snow with their matching colour,
+displacement and `*albedo_height*` output paths. The content entries disable
+alpha premultiplication so the height channel does not change the colour.
+No separate height texture is loaded for these three materials.

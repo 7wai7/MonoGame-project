@@ -1,7 +1,7 @@
 """Generate editable terrain material masks from the project's height EXR.
 
 The diffuse EXR is used only to suggest river coverage. It never chooses
-grass, soil, or rock, so its large painted pixels cannot define those areas.
+grass or rock, so its large painted pixels cannot define those areas.
 """
 
 from __future__ import annotations
@@ -11,12 +11,12 @@ from pathlib import Path
 
 import numpy as np
 import OpenEXR
-from PIL import Image, ImageFilter
+from PIL import Image
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TERRAIN = REPOSITORY / "Assets" / "Terrains" / "Rugged Terrain with Rivers"
-MASK_NAMES = ("Grass", "Soil", "Rock", "River", "Snow")
+MASK_NAMES = ("Grass", "Rock", "River", "Snow")
 
 
 def smoothstep(start: float, end: float, values: np.ndarray) -> np.ndarray:
@@ -63,8 +63,7 @@ def terrain_features(height: np.ndarray, cell_metres: float) -> tuple[np.ndarray
 
     curvature_radius = max(slope_radius + 1, round(14.0 / cell_metres))
     east, west, south, north = offset_neighbours(height, curvature_radius)
-    # Positive values identify hollows where soil can accumulate; negative
-    # values identify exposed crests. Units are approximate world metres.
+    # Negative values identify exposed crests. Units are approximate world metres.
     hollowness = (east + west + south + north) * 0.25 - height
     return slope_degrees, hollowness
 
@@ -102,7 +101,7 @@ def suggest_river(path: Path, expected_shape: tuple[int, int]) -> np.ndarray:
         raise ValueError("Diffuse and height EXRs must have identical dimensions")
 
     # The existing terrain shader reads the diffuse as sRGB. Extract only its
-    # distinctly blue regions; rock/soil/grass do not use this colour map.
+    # distinctly blue regions; rock and grass do not use this colour map.
     blue_minus_red = srgb(blue) - srgb(red)
     blue_minus_green = srgb(blue) - srgb(green)
     river = smoothstep(0.025, 0.10, blue_minus_red)
@@ -126,20 +125,9 @@ def make_masks(height: np.ndarray, diffuse_path: Path,
                       slope + 5.0 * exposed_crest + 3.0 * (variation - 0.5))
     del exposed_crest
 
-    concavity = smoothstep(0.15, 1.4, hollowness)
-    river_image = Image.fromarray(np.rint(river * 255.0).astype(np.uint8), mode="L")
-    river_bank = np.asarray(
-        river_image.filter(ImageFilter.GaussianBlur(radius=9.0)),
-        dtype=np.float32) / 255.0
-    # Soil gathers in broad hollows and near water. Coherent noise permits
-    # occasional soil fields; the original diffuse colour never places them.
-    soil_score = 0.65 * variation + 0.45 * concavity + 0.35 * river_bank
-    soil_fraction = smoothstep(0.34, 0.64, soil_score)
-    soil = (1.0 - rock) * soil_fraction
-    grass = (1.0 - rock) * (1.0 - soil_fraction)
+    grass = 1.0 - rock
     snow = suggest_snow(height, slope, extent_metres, snowline_metres)
-    return {"Grass": grass, "Soil": soil, "Rock": rock,
-            "River": river, "Snow": snow}
+    return {"Grass": grass, "Rock": rock, "River": river, "Snow": snow}
 
 
 def suggest_snow(height: np.ndarray, slope: np.ndarray,
@@ -163,32 +151,33 @@ def save_masks(masks: dict[str, np.ndarray], directory: Path) -> None:
 
 
 def pack_masks(directory: Path) -> None:
-    sources = [Image.open(directory / f"{name}.png").convert("L")
-               for name in MASK_NAMES]
-    if len({image.size for image in sources}) != 1:
+    sources = {name: Image.open(directory / f"{name}.png").convert("L")
+               for name in MASK_NAMES}
+    if len({image.size for image in sources.values()}) != 1:
         raise ValueError("All manually edited masks must have identical dimensions")
+    grass, rock, snow = (sources[name] for name in ("Grass", "Rock", "Snow"))
+    unused = Image.new("L", grass.size, 0)
     # Keep the ground weights opaque. A river mask in alpha would make most
     # pixels transparent in image editors and can discard their RGB on import.
-    Image.merge("RGB", tuple(sources[:3])).save(
+    Image.merge("RGB", (grass, rock, unused)).save(
         directory / "TerrainControl.png", compress_level=4)
     # This derived file is GPU data, not an image for direct editing. Disable
     # alpha premultiplication in MGCB so snow=0 cannot erase ground RGB.
-    Image.merge("RGBA", (*sources[:3], sources[4])).save(
+    Image.merge("RGBA", (grass, rock, unused, snow)).save(
         directory / "TerrainControlGpu.png", compress_level=4)
 
-    reduced = [image.resize((1024, 1024), Image.Resampling.BILINEAR)
-               for image in sources]
-    grass, soil, rock, river, snow = [
+    reduced = [sources[name].resize((1024, 1024), Image.Resampling.BILINEAR)
+               for name in MASK_NAMES]
+    grass_pixels, rock_pixels, river_pixels, snow_pixels = [
         np.asarray(image, dtype=np.float32) / 255.0 for image in reduced]
-    total = np.maximum(grass + soil + rock, 0.001)
+    total = np.maximum(grass_pixels + rock_pixels, 0.001)
     preview = (
-        grass[:, :, None] * np.array([59, 105, 56], dtype=np.float32) +
-        soil[:, :, None] * np.array([145, 111, 70], dtype=np.float32) +
-        rock[:, :, None] * np.array([127, 128, 128], dtype=np.float32)
+        grass_pixels[:, :, None] * np.array([59, 105, 56], dtype=np.float32) +
+        rock_pixels[:, :, None] * np.array([127, 128, 128], dtype=np.float32)
     ) / total[:, :, None]
-    preview = preview * (1.0 - snow[:, :, None]) + snow[:, :, None] * np.array(
+    preview = preview * (1.0 - snow_pixels[:, :, None]) + snow_pixels[:, :, None] * np.array(
         [230, 234, 239], dtype=np.float32)
-    preview = preview * (1.0 - river[:, :, None]) + river[:, :, None] * np.array(
+    preview = preview * (1.0 - river_pixels[:, :, None]) + river_pixels[:, :, None] * np.array(
         [57, 103, 155], dtype=np.float32)
     Image.fromarray(np.rint(np.clip(preview, 0, 255)).astype(np.uint8),
                     mode="RGB").save(directory / "TerrainControlPreview.png")

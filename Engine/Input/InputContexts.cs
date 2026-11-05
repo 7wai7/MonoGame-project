@@ -17,6 +17,11 @@ public static class InputContexts
         nameof(PauseMenu),
         MouseMode.Free);
 
+    /// <summary>Free cursor and no inspect input during automated camera measurements.</summary>
+    public static InputContext TerrainBenchmark { get; } = new(
+        nameof(TerrainBenchmark),
+        MouseMode.Free);
+
     public static bool CanUseInspect(InputContextStack stack) =>
         stack.CanReceiveInput(InspectViewport) ||
         stack.CanReceiveInput(InspectCursor);
