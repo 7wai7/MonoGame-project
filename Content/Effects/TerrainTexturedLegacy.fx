@@ -1,3 +1,4 @@
+// Legacy textured terrain material, retained for possible future experiments.
 // Authored control masks place ground materials and snow across the world.
 // The separate river mask temporarily paints blue water on the terrain.
 float4x4 World;

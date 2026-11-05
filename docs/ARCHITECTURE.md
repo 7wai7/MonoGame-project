@@ -310,8 +310,8 @@ across a sloped chunk seam, contact events, kinematic movement, all five
 primitive shapes, motion-type changes, and body cleanup. The smoke test is not
 a full-world performance benchmark.
 
-The bootstrap scene loads the supplied 4096×4096 OpenEXR height and diffuse
-images from `Assets/Terrains/Rugged Terrain with Rivers`. It maps the whole image
+The bootstrap scene loads the supplied 4096×4096 OpenEXR height image from
+`Assets/Terrains/Rugged Terrain with Rivers`. It maps the whole image
 to a 5,000×5,000-world-unit terrain and multiplies raw EXR height values by
 2,600 world units, without normalizing the image's minimum and maximum. These
 numbers are scene assumptions, not verified dimensions of the downloaded asset;
@@ -321,22 +321,28 @@ The scene creates 32×32 chunks with 128×128 height cells each (about 1.22 worl
 units per cell). Render meshes and physics heightfields use the same CPU
 heights. The camera's far plane and inspect movement speed are also increased
 for this world scale.
-The diffuse image is converted from linear EXR RGB to an sRGB 8-bit texture
-with mipmaps. Each chunk's UVs refer to the whole image, not a repeated tile.
+Each chunk's UVs refer to the whole image. The current terrain material uses
+the painted control and river masks, sampling them at the centre of each
+world-aligned hexagon. Each mask selects one fixed base colour for grass, soil,
+rock, snow, or river; Voronoi regions vary its shade. The grid is only a shader
+effect: the render meshes, their LODs, and Jolt heightfields remain unchanged.
+The active renderer is `TerrainHoneycombRenderSystem`. The earlier textured
+renderer remains in `TerrainMaterialRenderSystem.cs`; its shader and content
+imports are retained as legacy files in
+`Content/Effects/TerrainTexturedLegacy.fx` and
+`Content/LegacyTerrainTextured.mgcb.disabled`.
 The source image resolution alone does not set heightfield sampling: the
 chunk count and `TerrainCellsPerChunk` determine how many height samples
 physics uses. Increasing the cell count retains more height detail in the
 collider; render LOD error only changes the visible mesh.
 
 `OpenExrScanlineReader` supports the provided single-part, uncompressed,
-full-resolution float EXR channels. MonoGame's standard texture importer does
-not import EXR, so the two source files are copied unchanged beside the built
+full-resolution float EXR height channels. MonoGame's standard texture importer
+does not import EXR, so the height image is copied unchanged beside the built
 game and loaded from there. Other EXR compression, tiling, channel formats, or
-multipart files fail with a clear exception. The graphics profile is HiDef
-because the full 4096×4096 diffuse texture exceeds Reach's texture-size limit.
-Collision and render meshes stream independently. Texture blending and
-vegetation are not implemented; the diffuse image still stretches over the
-whole world, so nearby texture detail remains limited. Inspect picking can
+multipart files fail with a clear exception. The graphics profile is HiDef.
+Collision and render meshes stream independently. Vegetation is not
+implemented. Inspect picking can
 select a loaded terrain chunk but does not draw its enlarged-mesh outline,
 even when its collision component has streamed out. Press F3 to toggle the
 terrain collider's CPU-sampled triangle wireframe in the existing physics

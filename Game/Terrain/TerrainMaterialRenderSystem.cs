@@ -1,3 +1,4 @@
+// LEGACY: Textured terrain renderer, retained alongside the active honeycomb renderer.
 using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
@@ -12,7 +13,7 @@ using MonoGame_project.Engine.Time;
 
 namespace MonoGame_project.Game.Terrain;
 
-/// <summary>Draws streamed terrain meshes with world-space detail textures.</summary>
+/// <summary>Legacy terrain renderer with world-space detail textures.</summary>
 internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, IUpdateSystem, IRenderSystem
 {
     // These are the approximate real-world widths of the downloaded texture tiles.
@@ -77,7 +78,7 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
 
     public void LoadContent(World world, ContentManager content)
     {
-        _effect = content.Load<Effect>("Effects/TerrainMaterial");
+        _effect = content.Load<Effect>("Effects/TerrainTexturedLegacy");
         _control = content.Load<Texture2D>("TerrainMaterials/Control");
         _river = content.Load<Texture2D>("TerrainMaterials/River");
         if (_control.Width != _river.Width || _control.Height != _river.Height)

@@ -42,8 +42,22 @@ B=rock, A=snow. Its transparent appearance in image viewers is expected;
 do not edit it directly. The MonoGame content entry disables alpha
 premultiplication, preserving RGB even where snow coverage is zero. The
 river remains in `River.png`, so it can be edited independently. All masks
-share the heightmap's world UVs. Press F4 in inspect mode for material and
-mask diagnostics.
+share the heightmap's world UVs. The legacy textured renderer has F4 mask
+diagnostics when it is enabled; the active honeycomb renderer has no F4 mode.
+
+The current `TerrainHoneycomb.fx` material projects a regular hexagonal grid
+onto the world X/Z plane. Each cell samples the control and river masks at its
+centre and chooses one fixed base colour for grass, soil, rock, snow, or river.
+The strongest ground mask wins; snow and river cover it where their masks reach
+50% coverage. Only the Voronoi regions vary each base colour's shade. The shader
+does not load the source diffuse or detail textures.
+`HexRadius`, `HexOutlineWidth`, and `VoronoiPatchSize` in
+`Game/Terrain/TerrainHoneycombRenderSystem.cs` control the visual scale in world
+units. `VoronoiShadeStrength` controls how much Voronoi changes the brightness
+of a base colour: 0 disables it, while 0.12 gives a range of about ±6%.
+The current `HexRadius` is 0.5 world units, so each hexagon measures 1 unit
+between opposite vertices. This is a shader effect on the terrain mesh; it
+does not create hexagon geometry or change the heightfield collider.
 
 `generate.py` refuses to overwrite editable masks without `--force`.
 The default world and height scales match `BootstrapScene`; pass
@@ -51,8 +65,13 @@ The default world and height scales match `BootstrapScene`; pass
 are separate from `Snow.png`: the former describe its surface, while the
 latter decides where that surface appears.
 
-The snow material combines the downloaded OpenGL normal and roughness into
-one GPU texture. Repack after replacing either source image:
+The previous textured renderer is preserved as
+`Game/Terrain/TerrainMaterialRenderSystem.cs`, with its shader in
+`Content/Effects/TerrainTexturedLegacy.fx` and content entries in
+`Content/LegacyTerrainTextured.mgcb.disabled`. The old material combined the
+downloaded OpenGL normal and roughness into one GPU texture. These assets are
+retained for a possible future textured material. Repack after replacing either
+source image:
 
 ```sh
 .venv/bin/python Tools/TerrainMaterials/pack_normal_rough.py \
@@ -73,6 +92,4 @@ It uses the same Python dependencies as the mask generator:
   Assets/Textures/sparse_grass_2k.blend/textures/sparse_grass_albedo_height_2k.png
 ```
 
-The current material still loads separate albedo and height textures; generating
-this packed file does not change rendering until the content pipeline and shader
-are updated to use it.
+The current honeycomb material does not use this packed file.

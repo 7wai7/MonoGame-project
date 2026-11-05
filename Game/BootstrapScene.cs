@@ -72,7 +72,9 @@ public sealed class BootstrapScene : GameScene
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
         StartupProfiler.Info("Physics backend: Jolt.");
         systems.Add(new PhysicsSystem(), order: 0);
-        systems.Add(new TerrainMaterialRenderSystem(), order: 995);
+        systems.Add(new TerrainHoneycombRenderSystem(
+            new Vector2(TerrainFirstChunk * TerrainChunkWorldSize),
+            new Vector2(TerrainWorldExtent)), order: 995);
         systems.Add(new MeshRenderSystem(), order: 1_000);
         systems.Add(new PhysicsDebugRenderSystem(), order: 1_100);
     }
