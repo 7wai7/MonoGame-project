@@ -55,6 +55,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
         {
             GumUI.Initialize(this, DefaultVisualsVersion.V3);
+            GumUI.EnableExpandToWindow();
             CustomSetPropertyOnRenderable.InMemoryFontCreator =
                 new KernSmithFontCreator(GraphicsDevice);
 
