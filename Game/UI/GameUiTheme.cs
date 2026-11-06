@@ -44,15 +44,14 @@ public sealed class GameUiTheme : IDisposable
         return overlay;
     }
 
-    /// <summary>Creates one framed visual; the screen controls its placement.</summary>
-    public ContainerRuntime CreatePanel(float width, float height,
+    /// <summary>Creates a styled frame; its owner controls size and placement.</summary>
+    public ContainerRuntime CreatePanel(
         int chamferSize = DefaultChamferSize,
         int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ValidateSize(width, height);
         ValidateFrameSize(chamferSize, borderThickness);
-        var panel = new ContainerRuntime { Width = width, Height = height };
+        var panel = new ContainerRuntime();
         var frame = new NineSliceRuntime
         {
             Texture = _textures.GetFrameTexture(chamferSize, borderThickness,
@@ -65,17 +64,17 @@ public sealed class GameUiTheme : IDisposable
         return panel;
     }
 
-    /// <summary>Creates one compact control; the screen controls its placement.</summary>
-    public Button CreateButton(string text, float width, float height,
+    /// <summary>Creates a styled control; its owner controls size and placement.</summary>
+    public Button CreateButton(
+        string text,
         int chamferSize = DefaultChamferSize,
         int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(text);
-        ValidateSize(width, height);
         ValidateFrameSize(chamferSize, borderThickness);
 
-        var button = new Button { Text = text, Width = width, Height = height };
+        var button = new Button { Text = text };
         var visual = (ButtonVisual)button.Visual;
         visual.Background.Texture = _textures.GetFrameTexture(chamferSize,
             borderThickness, ButtonColor, ButtonBorderColor);
@@ -91,11 +90,10 @@ public sealed class GameUiTheme : IDisposable
     }
 
     /// <summary>A borderless menu background with subtle noise and fading edges.</summary>
-    public ContainerRuntime CreatePausePanel(float width, float height)
+    public ContainerRuntime CreatePausePanel()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ValidateSize(width, height);
-        var panel = new ContainerRuntime { Width = width, Height = height };
+        var panel = new ContainerRuntime();
         var background = new SpriteRuntime
         {
             Texture = _textures.GetPausePanelTexture(),
@@ -107,13 +105,12 @@ public sealed class GameUiTheme : IDisposable
     }
 
     /// <summary>Menu-only button with explicit Gum states for mouse and focus.</summary>
-    public Button CreatePauseButton(string text, float width, float height)
+    public Button CreatePauseButton(string text)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(text);
-        ValidateSize(width, height);
 
-        var button = new Button { Text = text, Width = width, Height = height };
+        var button = new Button { Text = text };
         var visual = (ButtonVisual)button.Visual;
         visual.Background.Texture = _textures.GetPauseButtonTexture();
         visual.Background.TextureAddress = TextureAddress.EntireTexture;
@@ -176,19 +173,6 @@ public sealed class GameUiTheme : IDisposable
         if (borderThickness < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(borderThickness));
-        }
-    }
-
-    private static void ValidateSize(float width, float height)
-    {
-        if (!float.IsFinite(width) || width <= 0f)
-        {
-            throw new ArgumentOutOfRangeException(nameof(width));
-        }
-
-        if (!float.IsFinite(height) || height <= 0f)
-        {
-            throw new ArgumentOutOfRangeException(nameof(height));
         }
     }
 }

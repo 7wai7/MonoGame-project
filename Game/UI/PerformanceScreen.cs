@@ -1,8 +1,5 @@
 using System.Diagnostics;
-using Gum.GueDeriving;
-using Gum.Managers;
 using Gum.Wireframe;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Ecs;
 using MonoGame_project.Engine;
@@ -12,26 +9,13 @@ using MonoGame_project.Game.Terrain;
 
 namespace MonoGame_project.Game.UI;
 
-/// <summary>Owns F11 statistics, their text controls and terminal logging.</summary>
+/// <summary>Owns F11 measurements, benchmark capture and terminal logging.</summary>
 internal sealed class PerformanceScreen : UiScreen
 {
-    private const float TextWidth = 260f;
-    private const float LeftMargin = 18f;
-    private static readonly Color TextColor = new(211, 211, 211);
-
     private readonly EngineContext _context;
     private readonly World _world;
     private readonly FrameRateMeter _meter = new();
-    private readonly ContainerRuntime _root = new();
-    private readonly ContainerRuntime _textGroup;
-    private readonly TextRuntime _fps;
-    private readonly TextRuntime _frame;
-    private readonly TextRuntime _chunks;
-    private readonly TextRuntime _nearTriangles;
-    private readonly TextRuntime _middleTriangles;
-    private readonly TextRuntime _farTriangles;
-    private readonly TextRuntime _memory;
-    private readonly TextRuntime _heap;
+    private readonly PerformanceStatsView _view = new();
     private string? _captureLabel;
     private long _lastCaptureDrawAt;
     private int _captureFrames;
@@ -42,29 +26,9 @@ internal sealed class PerformanceScreen : UiScreen
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _world = world ?? throw new ArgumentNullException(nameof(world));
-        _root.Dock(Dock.Fill);
-        _root.Visible = false;
-        _textGroup = new ContainerRuntime
-        {
-            Width = TextWidth,
-            Height = 144f,
-            ChildrenLayout = ChildrenLayout.TopToBottomStack
-        };
-        _textGroup.Anchor(Anchor.CenterVertically);
-        _textGroup.X = LeftMargin;
-        _root.Children.Add(_textGroup);
-
-        _fps = AddText("FPS  --");
-        _frame = AddText("FRAME  --");
-        _chunks = AddText("CHUNKS  N --  M --  F --");
-        _nearTriangles = AddText("TRI N  --");
-        _middleTriangles = AddText("TRI M  --");
-        _farTriangles = AddText("TRI F  --");
-        _memory = AddText("RESIDENT  --");
-        _heap = AddText("HEAP  --");
     }
 
-    public override GraphicalUiElement Visual => _root;
+    public override GraphicalUiElement Visual => _view.Visual;
 
     public override void HandleInput()
     {
@@ -74,16 +38,16 @@ internal sealed class PerformanceScreen : UiScreen
             return;
         }
 
-        _root.Visible = !_root.Visible;
-        _world.GetResource<TerrainRenderStatistics>().IsEnabled = _root.Visible;
+        _view.Visible = !_view.Visible;
+        _world.GetResource<TerrainRenderStatistics>().IsEnabled = _view.Visible;
         _meter.Reset();
-        Console.WriteLine($"[performance] F11: {(_root.Visible ? "on" : "off")}. " +
+        Console.WriteLine($"[performance] F11: {(_view.Visible ? "on" : "off")}. " +
             "FPS, frame time and memory are logged every five seconds while visible.");
     }
 
     public override void AfterSceneDraw()
     {
-        if (!_root.Visible)
+        if (!_view.Visible)
         {
             return;
         }
@@ -96,15 +60,7 @@ internal sealed class PerformanceScreen : UiScreen
         var terrain = _world.GetResource<TerrainRenderStatistics>();
         if (display is { } sample)
         {
-            var memory = ProcessMemorySnapshot.Capture();
-            _fps.Text = $"FPS  {sample.FramesPerSecond:F1}";
-            _frame.Text = $"FRAME  {sample.AverageMilliseconds:F1} / {sample.MaximumMilliseconds:F1} ms";
-            _chunks.Text = $"CHUNKS  N {terrain.NearChunks}  M {terrain.MiddleChunks}  F {terrain.FarChunks}";
-            _nearTriangles.Text = $"TRI N  {terrain.NearTriangles:N0}";
-            _middleTriangles.Text = $"TRI M  {terrain.MiddleTriangles:N0}";
-            _farTriangles.Text = $"TRI F  {terrain.FarTriangles:N0}";
-            _memory.Text = $"RESIDENT  {memory.ResidentBytes / (1024d * 1024d):F0} MiB";
-            _heap.Text = $"HEAP  {memory.ManagedHeapBytes / (1024d * 1024d):F0} MiB";
+            _view.Set(sample, terrain, ProcessMemorySnapshot.Capture());
         }
 
         if (log is { } logSample)
@@ -132,7 +88,7 @@ internal sealed class PerformanceScreen : UiScreen
         _captureTotalMilliseconds = 0d;
         _captureMaximumMilliseconds = 0d;
         _lastCaptureDrawAt = 0;
-        _root.Visible = true;
+        _view.Visible = true;
         _world.GetResource<TerrainRenderStatistics>().IsEnabled = true;
         _meter.Reset();
         Console.WriteLine($"[benchmark] START {label}; F11 statistics reset.");
@@ -184,24 +140,10 @@ internal sealed class PerformanceScreen : UiScreen
     private void StopCapture()
     {
         _captureLabel = null;
-        _root.Visible = false;
+        _view.Visible = false;
         _world.GetResource<TerrainRenderStatistics>().IsEnabled = false;
         _lastCaptureDrawAt = 0;
         _meter.Reset();
     }
 
-    private TextRuntime AddText(string value)
-    {
-        var text = new TextRuntime
-        {
-            Text = value,
-            Width = TextWidth,
-            Height = 18f,
-            FontSize = 11f,
-            UseFontSmoothing = true,
-            Color = TextColor
-        };
-        _textGroup.Children.Add(text);
-        return text;
-    }
 }

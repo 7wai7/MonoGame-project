@@ -25,7 +25,7 @@ internal sealed class InspectDetailsPanel : IDisposable
     {
         _close = close ?? throw new ArgumentNullException(nameof(close));
         _componentList = new InspectComponentList(rowClicked);
-        _panel = theme.CreatePanel(MaxWidth, MaxHeight);
+        _panel = theme.CreatePanel();
         _panel.Anchor(Anchor.TopRight);
         _panel.Width = 0f;
         _panel.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -63,7 +63,9 @@ internal sealed class InspectDetailsPanel : IDisposable
         _title.Width = 1f;
         _title.WidthUnits = DimensionUnitType.Ratio;
         header.Children.Add(_title);
-        _closeButton = theme.CreateButton("Close", 72f, 36f);
+        _closeButton = theme.CreateButton("Close");
+        _closeButton.Width = 72f;
+        _closeButton.Height = 36f;
         _closeButton.Click += OnCloseClicked;
         header.AddChild(_closeButton);
 

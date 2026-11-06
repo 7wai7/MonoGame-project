@@ -19,12 +19,13 @@ internal sealed class InspectSelectionCard : IDisposable
     public InspectSelectionCard(GameUiTheme theme, Action openDetails)
     {
         _openDetails = openDetails ?? throw new ArgumentNullException(nameof(openDetails));
-        _panel = theme.CreatePanel(MaxWidth, 68f);
+        _panel = theme.CreatePanel();
         _panel.Anchor(Anchor.TopRight);
         _panel.Width = 0f;
         _panel.WidthUnits = DimensionUnitType.RelativeToParent;
         _panel.MinWidth = 1f;
         _panel.MaxWidth = MaxWidth;
+        _panel.Height = 68f;
         _panel.Visible = false;
 
         var content = new ContainerRuntime
@@ -42,7 +43,9 @@ internal sealed class InspectSelectionCard : IDisposable
         _title.Width = 1f;
         _title.WidthUnits = DimensionUnitType.Ratio;
         content.Children.Add(_title);
-        _details = theme.CreateButton("Details", 86f, 38f);
+        _details = theme.CreateButton("Details");
+        _details.Width = 86f;
+        _details.Height = 38f;
         _details.Click += OnDetailsClicked;
         content.AddChild(_details);
     }
