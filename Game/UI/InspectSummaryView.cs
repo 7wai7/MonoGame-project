@@ -16,12 +16,16 @@ internal sealed class InspectSummaryView
         ChildrenLayout = ChildrenLayout.TopToBottomStack,
         StackSpacing = 4f
     };
-    private readonly TextRuntime _primary = UiText.Create(15f, GameUiTheme.TextSecondary, 22f);
-    private readonly TextRuntime _secondary = UiText.Create(15f, GameUiTheme.TextSecondary, 22f);
-    private readonly TextRuntime _state = UiText.Create(15f, GameUiTheme.TextSecondary, 42f);
+    private readonly TextRuntime _primary;
+    private readonly TextRuntime _secondary;
+    private readonly TextRuntime _state;
 
-    public InspectSummaryView()
+    public InspectSummaryView(GameUiTheme theme)
     {
+        ArgumentNullException.ThrowIfNull(theme);
+        _primary = UiText.Create(15f, theme.TextSecondary, 22f);
+        _secondary = UiText.Create(15f, theme.TextSecondary, 22f);
+        _state = UiText.Create(15f, theme.TextSecondary, 42f);
         _root.Children.Add(_primary);
         _root.Children.Add(_secondary);
         _root.Children.Add(_state);

@@ -16,10 +16,13 @@ internal sealed class InspectSelectionCard : IDisposable
     private readonly Button _details;
     private readonly Action _openDetails;
 
-    public InspectSelectionCard(GameUiTheme theme, Action openDetails)
+    public InspectSelectionCard(GameUiTheme theme, GameUiTextureCache textures,
+        Action openDetails)
     {
+        ArgumentNullException.ThrowIfNull(theme);
+        ArgumentNullException.ThrowIfNull(textures);
         _openDetails = openDetails ?? throw new ArgumentNullException(nameof(openDetails));
-        _panel = theme.CreatePanel();
+        _panel = new ContainerRuntime();
         _panel.Anchor(Anchor.TopRight);
         _panel.Width = 0f;
         _panel.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -27,6 +30,10 @@ internal sealed class InspectSelectionCard : IDisposable
         _panel.MaxWidth = MaxWidth;
         _panel.Height = 68f;
         _panel.Visible = false;
+        var background = new NineSliceRuntime();
+        background.Dock(Dock.Fill);
+        UiPanelStyles.ApplyFrame(background, theme, textures);
+        _panel.Children.Add(background);
 
         var content = new ContainerRuntime
         {
@@ -39,11 +46,12 @@ internal sealed class InspectSelectionCard : IDisposable
             StackSpacing = 8f
         };
         _panel.Children.Add(content);
-        _title = UiText.Create(15f, GameUiTheme.TextPrimary, 38f);
+        _title = UiText.Create(15f, theme.TextPrimary, 38f);
         _title.Width = 1f;
         _title.WidthUnits = DimensionUnitType.Ratio;
         content.Children.Add(_title);
-        _details = theme.CreateButton("Details");
+        _details = new Button { Text = "Details" };
+        UiButtonStyles.ApplyStandard(_details, theme, textures);
         _details.Width = 86f;
         _details.Height = 38f;
         _details.Click += OnDetailsClicked;

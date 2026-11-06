@@ -10,8 +10,7 @@ internal sealed class GameUiTextureCache : IDisposable
 
     private readonly GraphicsDevice _graphicsDevice;
     private readonly Dictionary<FrameTextureSpec, Texture2D> _frames = new();
-    private Texture2D? _pausePanel;
-    private Texture2D? _pauseButton;
+    private readonly Dictionary<UiNoiseTextureSpec, Texture2D> _noiseTextures = new();
     private bool _disposed;
 
     public GameUiTextureCache(GraphicsDevice graphicsDevice) =>
@@ -21,6 +20,8 @@ internal sealed class GameUiTextureCache : IDisposable
         Color fill, Color border)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(chamferSize);
+        ArgumentOutOfRangeException.ThrowIfNegative(borderThickness);
         var spec = new FrameTextureSpec(chamferSize, borderThickness, fill, border);
         if (!_frames.TryGetValue(spec, out var texture))
         {
@@ -31,18 +32,25 @@ internal sealed class GameUiTextureCache : IDisposable
         return texture;
     }
 
-    public Texture2D GetPausePanelTexture()
+    public Texture2D GetNoiseTexture(UiNoiseTextureSpec spec)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _pausePanel ??= CreatePauseTexture(360, 136,
-            new Color(27, 33, 38), opacity: 230, fadeWidth: 52f, noiseStrength: 13f);
-    }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(spec.Width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(spec.Height);
+        if (spec.Opacity is < 0 or > 255 ||
+            !float.IsFinite(spec.FadeWidth) || spec.FadeWidth <= 0f ||
+            !float.IsFinite(spec.NoiseStrength) || spec.NoiseStrength < 0f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(spec));
+        }
 
-    public Texture2D GetPauseButtonTexture()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return _pauseButton ??= CreatePauseTexture(192, 48,
-            new Color(75, 89, 100), opacity: 220, fadeWidth: 12f, noiseStrength: 2f);
+        if (!_noiseTextures.TryGetValue(spec, out var texture))
+        {
+            texture = CreateNoiseTexture(spec);
+            _noiseTextures.Add(spec, texture);
+        }
+
+        return texture;
     }
 
     public void Dispose()
@@ -58,8 +66,12 @@ internal sealed class GameUiTextureCache : IDisposable
         }
 
         _frames.Clear();
-        _pausePanel?.Dispose();
-        _pauseButton?.Dispose();
+        foreach (var texture in _noiseTextures.Values)
+        {
+            texture.Dispose();
+        }
+
+        _noiseTextures.Clear();
         _disposed = true;
     }
 
@@ -110,28 +122,27 @@ internal sealed class GameUiTextureCache : IDisposable
             fromLeft + fromBottom >= cut;
     }
 
-    private Texture2D CreatePauseTexture(int width, int height, Color baseColor,
-        int opacity, float fadeWidth, float noiseStrength)
+    private Texture2D CreateNoiseTexture(UiNoiseTextureSpec spec)
     {
-        var pixels = new Color[width * height];
-        for (var y = 0; y < height; y++)
+        var pixels = new Color[checked(spec.Width * spec.Height)];
+        for (var y = 0; y < spec.Height; y++)
         {
-            for (var x = 0; x < width; x++)
+            for (var x = 0; x < spec.Width; x++)
             {
-                var edgeDistance = MathF.Min(x, width - 1 - x);
-                var fade = Math.Clamp(edgeDistance / fadeWidth, 0f, 1f);
+                var edgeDistance = MathF.Min(x, spec.Width - 1 - x);
+                var fade = Math.Clamp(edgeDistance / spec.FadeWidth, 0f, 1f);
                 fade = fade * fade * (3f - 2f * fade);
-                var alpha = (int)MathF.Round(opacity * fade);
+                var alpha = (int)MathF.Round(spec.Opacity * fade);
                 var noise = (Perlin(x / 69f, y / 69f) +
-                    0.35f * Perlin(x / 23f, y / 23f)) * noiseStrength;
-                var red = Math.Clamp((int)MathF.Round(baseColor.R + noise), 0, 255);
-                var green = Math.Clamp((int)MathF.Round(baseColor.G + noise), 0, 255);
-                var blue = Math.Clamp((int)MathF.Round(baseColor.B + noise), 0, 255);
-                pixels[y * width + x] = Color.FromNonPremultiplied(red, green, blue, alpha);
+                    0.35f * Perlin(x / 23f, y / 23f)) * spec.NoiseStrength;
+                var red = Math.Clamp((int)MathF.Round(spec.BaseColor.R + noise), 0, 255);
+                var green = Math.Clamp((int)MathF.Round(spec.BaseColor.G + noise), 0, 255);
+                var blue = Math.Clamp((int)MathF.Round(spec.BaseColor.B + noise), 0, 255);
+                pixels[y * spec.Width + x] = Color.FromNonPremultiplied(red, green, blue, alpha);
             }
         }
 
-        var texture = new Texture2D(_graphicsDevice, width, height);
+        var texture = new Texture2D(_graphicsDevice, spec.Width, spec.Height);
         texture.SetData(pixels);
         return texture;
     }
@@ -173,3 +184,6 @@ internal sealed class GameUiTextureCache : IDisposable
     private readonly record struct FrameTextureSpec(int ChamferSize,
         int BorderThickness, Color FillColor, Color BorderColor);
 }
+
+internal readonly record struct UiNoiseTextureSpec(int Width, int Height,
+    Color BaseColor, int Opacity, float FadeWidth, float NoiseStrength);

@@ -109,10 +109,9 @@ internal sealed class InspectRowsModel
         foreach (var row in _rows)
         {
             var text = FormatRow(row, entity, renderer);
-            var color = row.Kind is RowKind.ComponentValue or RowKind.Diagnostic
-                ? GameUiTheme.TextSecondary : GameUiTheme.TextPrimary;
+            var secondary = row.Kind is RowKind.ComponentValue or RowKind.Diagnostic;
             var clickable = row.Kind is RowKind.DiagnosticsHeader or RowKind.ComponentHeader;
-            _displayRows.Add(new InspectRowDisplay(text, color, clickable));
+            _displayRows.Add(new InspectRowDisplay(text, secondary, clickable));
         }
 
         return _displayRows;
@@ -244,4 +243,4 @@ internal sealed class InspectRowsModel
         MemberInfo? Member = null, DiagnosticField Diagnostic = DiagnosticField.None);
 }
 
-internal readonly record struct InspectRowDisplay(string Text, Color Color, bool Clickable);
+internal readonly record struct InspectRowDisplay(string Text, bool Secondary, bool Clickable);

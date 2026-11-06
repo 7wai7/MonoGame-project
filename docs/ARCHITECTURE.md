@@ -88,10 +88,11 @@ The menu's exit button requests application shutdown through
 processes the click. The menu currently overlays the scene; it does not pause
 the physics simulation.
 
-`GameUiTheme` creates styled Gum overlays, panels, and buttons with caller-supplied
-sizes and text. Each view connects its own actions to the controls it creates.
-The theme is owned by the scene's UI scope, so views share its GPU textures and
-are detached before those textures are disposed.
+`GameUiTheme` is an immutable set of semantic colors. Each view creates and
+lays out its own Gum controls, then applies shared visual rules through
+`UiPanelStyles` or `UiButtonStyles`. `GameUiTextureCache` shares generated frame
+and noise textures across those views. The scene's UI scope owns this cache and
+disposes it after detaching the screens.
 
 The stack selects a mouse mode; `InputService` owns the actual cursor capture.
 When an active window switches to `Free`, it releases capture and places the
@@ -114,8 +115,9 @@ screens do not call `AddToRoot`.
 
 `GameEngine` opens a `UiScope` before initializing each scene and disposes that
 scope after the scene shuts down. The scope owns its screens and shared UI
-resources, including `GameUiTheme`; it detaches screens before disposing theme
-textures. A global scope is available for UI that must survive scene changes.
+resources, including `GameUiTextureCache`; it detaches screens before disposing
+their shared textures. A global scope is available for UI that must survive
+scene changes.
 
 Each `UiScreen` owns its visual subtree and local behavior. `UiManager` calls
 `HandleInput()` before ECS updates, `Refresh()` after ECS and physics, and

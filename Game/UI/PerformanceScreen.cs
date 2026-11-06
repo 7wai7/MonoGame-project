@@ -15,17 +15,18 @@ internal sealed class PerformanceScreen : UiScreen
     private readonly EngineContext _context;
     private readonly World _world;
     private readonly FrameRateMeter _meter = new();
-    private readonly PerformanceStatsView _view = new();
+    private readonly PerformanceStatsView _view;
     private string? _captureLabel;
     private long _lastCaptureDrawAt;
     private int _captureFrames;
     private double _captureTotalMilliseconds;
     private double _captureMaximumMilliseconds;
 
-    public PerformanceScreen(EngineContext context, World world)
+    public PerformanceScreen(EngineContext context, World world, GameUiTheme theme)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _world = world ?? throw new ArgumentNullException(nameof(world));
+        _view = new PerformanceStatsView(theme);
     }
 
     public override GraphicalUiElement Visual => _view.Visual;

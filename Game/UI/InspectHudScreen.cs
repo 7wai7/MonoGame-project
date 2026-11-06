@@ -22,7 +22,7 @@ internal sealed class InspectHudScreen : UiScreen
     private readonly InspectSessionState _session;
     private readonly ContainerRuntime _root = new();
     private readonly ContainerRuntime _safeArea = new();
-    private readonly InspectReticleView _reticle = new();
+    private readonly InspectReticleView _reticle;
     private readonly InspectSelectionCard _selection;
     private readonly InspectDetailsPanel _details;
     private readonly InspectRowsModel _rows = new();
@@ -34,12 +34,13 @@ internal sealed class InspectHudScreen : UiScreen
     private bool _disposed;
 
     public InspectHudScreen(EngineContext context, World world,
-        InspectSessionState session, GameUiTheme theme)
+        InspectSessionState session, GameUiTheme theme, GameUiTextureCache textures)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         ArgumentNullException.ThrowIfNull(theme);
+        ArgumentNullException.ThrowIfNull(textures);
 
         _root.Dock(Dock.Fill);
         _root.Visible = false;
@@ -51,8 +52,9 @@ internal sealed class InspectHudScreen : UiScreen
         _safeArea.HeightUnits = DimensionUnitType.RelativeToParent;
         _safeArea.MinWidth = 1f;
         _safeArea.MinHeight = 1f;
-        _selection = new InspectSelectionCard(theme, OpenDetails);
-        _details = new InspectDetailsPanel(theme, CloseDetails, OnRowClicked);
+        _reticle = new InspectReticleView(theme);
+        _selection = new InspectSelectionCard(theme, textures, OpenDetails);
+        _details = new InspectDetailsPanel(theme, textures, CloseDetails, OnRowClicked);
         _root.Children.Add(_reticle.Visual);
         _root.Children.Add(_safeArea);
         _safeArea.Children.Add(_selection.Visual);

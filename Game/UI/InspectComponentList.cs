@@ -12,11 +12,13 @@ internal sealed class InspectComponentList : IDisposable
 
     private readonly ScrollViewer _viewer = new();
     private readonly List<UiTextRow> _rows = [];
+    private readonly GameUiTheme _theme;
     private readonly Action<int> _rowClicked;
     private int _revision = -1;
 
-    public InspectComponentList(Action<int> rowClicked)
+    public InspectComponentList(GameUiTheme theme, Action<int> rowClicked)
     {
+        _theme = theme ?? throw new ArgumentNullException(nameof(theme));
         _rowClicked = rowClicked ?? throw new ArgumentNullException(nameof(rowClicked));
         _viewer.Visual.Width = 0f;
         _viewer.Visual.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -48,7 +50,8 @@ internal sealed class InspectComponentList : IDisposable
         for (var index = 0; index < rows.Count; index++)
         {
             var row = rows[index];
-            _rows[index].Set(row.Text, row.Color, row.Clickable);
+            _rows[index].Set(row.Text,
+                row.Secondary ? _theme.TextSecondary : _theme.TextPrimary, row.Clickable);
         }
     }
 
@@ -76,7 +79,7 @@ internal sealed class InspectComponentList : IDisposable
         for (var index = 0; index < rowCount; index++)
         {
             var rowIndex = index;
-            var row = new UiTextRow(RowHeight, () => _rowClicked(rowIndex));
+            var row = new UiTextRow(_theme, RowHeight, () => _rowClicked(rowIndex));
             _viewer.AddChild(row.Visual);
             _rows.Add(row);
         }

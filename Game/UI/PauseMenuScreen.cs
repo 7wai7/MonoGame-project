@@ -7,16 +7,17 @@ using MonoGame_project.Engine.UI;
 namespace MonoGame_project.Game.UI;
 
 /// <summary>Owns the pause input context and connects the menu to game actions.</summary>
-public sealed class PauseMenuScreen : UiScreen
+internal sealed class PauseMenuScreen : UiScreen
 {
     private readonly EngineContext _context;
     private readonly PauseMenuView _view;
     private bool _disposed;
 
-    public PauseMenuScreen(EngineContext context, GameUiTheme theme)
+    public PauseMenuScreen(EngineContext context, GameUiTheme theme,
+        GameUiTextureCache textures)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        _view = new PauseMenuView(theme, RequestExit);
+        _view = new PauseMenuView(theme, textures, RequestExit);
     }
 
     public override GraphicalUiElement Visual => _view.Visual;

@@ -2,7 +2,6 @@ using Gum.DataTypes;
 using Gum.GueDeriving;
 using Gum.Managers;
 using Gum.Wireframe;
-using Microsoft.Xna.Framework;
 using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Game.Terrain;
 
@@ -13,8 +12,6 @@ internal sealed class PerformanceStatsView
 {
     private const float MaxTextWidth = 260f;
     private const float EdgeInset = 18f;
-    private static readonly Color TextColor = new(211, 211, 211);
-
     private readonly ContainerRuntime _root = new();
     private readonly TextRuntime _fps;
     private readonly TextRuntime _frame;
@@ -25,8 +22,9 @@ internal sealed class PerformanceStatsView
     private readonly TextRuntime _memory;
     private readonly TextRuntime _heap;
 
-    public PerformanceStatsView()
+    public PerformanceStatsView(GameUiTheme theme)
     {
+        ArgumentNullException.ThrowIfNull(theme);
         _root.Dock(Dock.Fill);
         _root.Visible = false;
         var textGroup = new ContainerRuntime
@@ -43,14 +41,14 @@ internal sealed class PerformanceStatsView
         textGroup.Anchor(Anchor.CenterVertically);
         _root.Children.Add(textGroup);
 
-        _fps = AddText(textGroup, "FPS  --");
-        _frame = AddText(textGroup, "FRAME  --");
-        _chunks = AddText(textGroup, "CHUNKS  N --  M --  F --");
-        _nearTriangles = AddText(textGroup, "TRI N  --");
-        _middleTriangles = AddText(textGroup, "TRI M  --");
-        _farTriangles = AddText(textGroup, "TRI F  --");
-        _memory = AddText(textGroup, "RESIDENT  --");
-        _heap = AddText(textGroup, "HEAP  --");
+        _fps = AddText(textGroup, "FPS  --", theme);
+        _frame = AddText(textGroup, "FRAME  --", theme);
+        _chunks = AddText(textGroup, "CHUNKS  N --  M --  F --", theme);
+        _nearTriangles = AddText(textGroup, "TRI N  --", theme);
+        _middleTriangles = AddText(textGroup, "TRI M  --", theme);
+        _farTriangles = AddText(textGroup, "TRI F  --", theme);
+        _memory = AddText(textGroup, "RESIDENT  --", theme);
+        _heap = AddText(textGroup, "HEAP  --", theme);
     }
 
     public GraphicalUiElement Visual => _root;
@@ -74,9 +72,10 @@ internal sealed class PerformanceStatsView
         UiText.Set(_heap, $"HEAP  {memory.ManagedHeapBytes / (1024d * 1024d):F0} MiB");
     }
 
-    private static TextRuntime AddText(ContainerRuntime parent, string value)
+    private static TextRuntime AddText(ContainerRuntime parent, string value,
+        GameUiTheme theme)
     {
-        var text = UiText.Create(11f, TextColor, 18f);
+        var text = UiText.Create(11f, theme.DiagnosticsText, 18f);
         text.Text = value;
         parent.Children.Add(text);
         return text;

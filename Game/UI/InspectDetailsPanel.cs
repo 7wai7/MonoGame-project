@@ -17,15 +17,19 @@ internal sealed class InspectDetailsPanel : IDisposable
     private readonly TextRuntime _listHeading;
     private readonly TextRuntime _footer;
     private readonly Button _closeButton;
-    private readonly InspectSummaryView _summary = new();
+    private readonly InspectSummaryView _summary;
     private readonly InspectComponentList _componentList;
     private readonly Action _close;
 
-    public InspectDetailsPanel(GameUiTheme theme, Action close, Action<int> rowClicked)
+    public InspectDetailsPanel(GameUiTheme theme, GameUiTextureCache textures,
+        Action close, Action<int> rowClicked)
     {
+        ArgumentNullException.ThrowIfNull(theme);
+        ArgumentNullException.ThrowIfNull(textures);
         _close = close ?? throw new ArgumentNullException(nameof(close));
-        _componentList = new InspectComponentList(rowClicked);
-        _panel = theme.CreatePanel();
+        _summary = new InspectSummaryView(theme);
+        _componentList = new InspectComponentList(theme, rowClicked);
+        _panel = new ContainerRuntime();
         _panel.Anchor(Anchor.TopRight);
         _panel.Width = 0f;
         _panel.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -36,6 +40,10 @@ internal sealed class InspectDetailsPanel : IDisposable
         _panel.MinHeight = 1f;
         _panel.MaxHeight = MaxHeight;
         _panel.Visible = false;
+        var background = new NineSliceRuntime();
+        background.Dock(Dock.Fill);
+        UiPanelStyles.ApplyFrame(background, theme, textures);
+        _panel.Children.Add(background);
 
         var content = new ContainerRuntime
         {
@@ -59,22 +67,23 @@ internal sealed class InspectDetailsPanel : IDisposable
             StackSpacing = 8f
         };
         content.Children.Add(header);
-        _title = UiText.Create(19f, GameUiTheme.TextPrimary, 36f);
+        _title = UiText.Create(19f, theme.TextPrimary, 36f);
         _title.Width = 1f;
         _title.WidthUnits = DimensionUnitType.Ratio;
         header.Children.Add(_title);
-        _closeButton = theme.CreateButton("Close");
+        _closeButton = new Button { Text = "Close" };
+        UiButtonStyles.ApplyStandard(_closeButton, theme, textures);
         _closeButton.Width = 72f;
         _closeButton.Height = 36f;
         _closeButton.Click += OnCloseClicked;
         header.AddChild(_closeButton);
 
         content.Children.Add(_summary.Visual);
-        _listHeading = UiText.Create(14f, GameUiTheme.Accent, 20f);
+        _listHeading = UiText.Create(14f, theme.Accent, 20f);
         _listHeading.Text = "Details";
         content.Children.Add(_listHeading);
         content.Children.Add(_componentList.Visual);
-        _footer = UiText.Create(12f, GameUiTheme.TextSecondary, 20f);
+        _footer = UiText.Create(12f, theme.TextSecondary, 20f);
         _footer.Text = "Ctrl + wheel  ·  I close";
         content.Children.Add(_footer);
     }

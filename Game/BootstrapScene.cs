@@ -90,14 +90,16 @@ public sealed class BootstrapScene : GameScene
     protected override void OnInitialize(EngineContext context)
     {
         context.InputContexts.Reset(InputContexts.InspectViewport);
-        var theme = new GameUiTheme(context.GraphicsDevice);
-        context.Ui.Scene.Own(theme);
+        var theme = GameUiTheme.Dark;
+        var uiTextures = new GameUiTextureCache(context.GraphicsDevice);
+        context.Ui.Scene.Own(uiTextures);
         var inspectSession = new InspectSessionState();
         World.SetResource(inspectSession);
-        context.Ui.Scene.Mount(new InspectHudScreen(context, World, inspectSession, theme));
-        var performance = new PerformanceScreen(context, World);
+        context.Ui.Scene.Mount(new InspectHudScreen(
+            context, World, inspectSession, theme, uiTextures));
+        var performance = new PerformanceScreen(context, World, theme);
         context.Ui.Scene.Mount(performance);
-        context.Ui.Scene.MountModal(new PauseMenuScreen(context, theme));
+        context.Ui.Scene.MountModal(new PauseMenuScreen(context, theme, uiTextures));
         World.SetResource(new TerrainRenderStatistics());
 
         // One image covers the finite terrain. Render LODs and colliders use

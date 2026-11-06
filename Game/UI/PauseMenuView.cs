@@ -22,15 +22,22 @@ internal sealed class PauseMenuView : IDisposable
     private readonly Button _exitButton;
     private readonly Action _exit;
 
-    public PauseMenuView(GameUiTheme theme, Action exit)
+    public PauseMenuView(GameUiTheme theme, GameUiTextureCache textures, Action exit)
     {
         ArgumentNullException.ThrowIfNull(theme);
+        ArgumentNullException.ThrowIfNull(textures);
         _exit = exit ?? throw new ArgumentNullException(nameof(exit));
 
         _root.Dock(Dock.Fill);
-        _root.Children.Add(theme.CreateOverlay());
+        var overlay = new RectangleRuntime
+        {
+            FillColor = theme.Overlay,
+            StrokeWidth = 0f
+        };
+        overlay.Dock(Dock.Fill);
+        _root.Children.Add(overlay);
 
-        _panel = theme.CreatePausePanel();
+        _panel = new ContainerRuntime();
         _panel.Anchor(Anchor.Center);
         _panel.Width = -2f * EdgeInset;
         _panel.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -41,6 +48,10 @@ internal sealed class PauseMenuView : IDisposable
         _panel.MinHeight = 1f;
         _panel.MaxHeight = MaxPanelHeight;
         _root.Children.Add(_panel);
+        var background = new SpriteRuntime();
+        background.Dock(Dock.Fill);
+        UiPanelStyles.ApplyMenuBackdrop(background, theme, textures);
+        _panel.Children.Add(background);
 
         var content = new ContainerRuntime
         {
@@ -56,12 +67,13 @@ internal sealed class PauseMenuView : IDisposable
         content.Anchor(Anchor.Center);
         _panel.Children.Add(content);
 
-        var heading = UiText.Create(20f, GameUiTheme.TextPrimary, 24f);
+        var heading = UiText.Create(20f, theme.TextPrimary, 24f);
         heading.Text = "Paused";
         heading.HorizontalAlignment = HorizontalAlignment.Center;
         content.Children.Add(heading);
 
-        _exitButton = theme.CreatePauseButton("Exit game");
+        _exitButton = new Button { Text = "Exit game" };
+        UiButtonStyles.ApplyMenu(_exitButton, theme, textures);
         _exitButton.Anchor(Anchor.CenterHorizontally);
         _exitButton.Width = 0f;
         _exitButton.Visual.WidthUnits = DimensionUnitType.RelativeToParent;
@@ -70,7 +82,7 @@ internal sealed class PauseMenuView : IDisposable
         _exitButton.Click += OnExitClicked;
         content.AddChild(_exitButton);
 
-        _resumeHint = UiText.Create(12f, GameUiTheme.TextSecondary, 18f);
+        _resumeHint = UiText.Create(12f, theme.TextSecondary, 18f);
         _resumeHint.Text = "Esc to resume";
         _resumeHint.HorizontalAlignment = HorizontalAlignment.Center;
         content.Children.Add(_resumeHint);

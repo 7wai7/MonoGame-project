@@ -9,14 +9,17 @@ internal sealed class UiTextRow : IDisposable
 {
     private readonly TextRuntime _text;
     private readonly Action _clicked;
+    private readonly Color _accent;
     private Color _baseColor;
     private bool _clickable;
     private bool _hovered;
 
-    public UiTextRow(float height, Action clicked)
+    public UiTextRow(GameUiTheme theme, float height, Action clicked)
     {
+        ArgumentNullException.ThrowIfNull(theme);
         _clicked = clicked ?? throw new ArgumentNullException(nameof(clicked));
-        _text = UiText.Create(14f, GameUiTheme.TextPrimary, height);
+        _accent = theme.Accent;
+        _text = UiText.Create(14f, theme.TextPrimary, height);
         _text.HasEvents = true;
         _text.Click += OnClick;
         _text.RollOn += OnRollOn;
@@ -30,7 +33,7 @@ internal sealed class UiTextRow : IDisposable
         UiText.Set(_text, text);
         _baseColor = color;
         _clickable = clickable;
-        _text.Color = _hovered && _clickable ? GameUiTheme.Accent : color;
+        _text.Color = _hovered && _clickable ? _accent : color;
     }
 
     public void Dispose()
@@ -53,7 +56,7 @@ internal sealed class UiTextRow : IDisposable
         _hovered = true;
         if (_clickable)
         {
-            _text.Color = GameUiTheme.Accent;
+            _text.Color = _accent;
         }
     }
 
