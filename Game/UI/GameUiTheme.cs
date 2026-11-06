@@ -8,44 +8,33 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace MonoGame_project.Game.UI;
 
-/// <summary>Shared visuals and GPU textures for the game's dark UI style.</summary>
+/// <summary>Shared palette and styles for the game's Gum controls.</summary>
 public sealed class GameUiTheme : IDisposable
 {
-    public const int DefaultChamferSize = 16;
-    public const int DefaultBorderThickness = 2;
+    public const int DefaultChamferSize = 0;
+    public const int DefaultBorderThickness = 1;
 
-    private const int MinimumFrameTextureSize = 48;
+    public static readonly Color TextPrimary = new(230, 234, 237);
+    public static readonly Color TextSecondary = new(177, 187, 194);
+    public static readonly Color Accent = new(165, 195, 194);
 
-    private static readonly Color OverlayColor = new(3, 5, 8, 164);
-    private static readonly Color PanelColor = new(18, 21, 27);
-    private static readonly Color PanelBorderColor = new(82, 174, 201);
-    private static readonly Color ButtonBorderColor = new(115, 220, 244);
-    private static readonly Color SecondaryTextColor = new(190, 198, 210);
+    private static readonly Color OverlayColor = new(7, 10, 13, 190);
+    private static readonly Color PanelColor = new(24, 29, 34);
+    private static readonly Color PanelBorderColor = new(69, 80, 88);
+    private static readonly Color ButtonColor = new(43, 52, 59);
+    private static readonly Color ButtonBorderColor = new(94, 108, 116);
 
-    private static readonly FrameCorners PanelCorners = new(
-        FrameCornerStyle.Chamfer,
-        FrameCornerStyle.Chamfer,
-        FrameCornerStyle.Chamfer,
-        FrameCornerStyle.Chamfer);
-    private static readonly FrameCorners ButtonCorners = new(
-        FrameCornerStyle.OpenBorder,
-        FrameCornerStyle.Square,
-        FrameCornerStyle.OpenBorder,
-        FrameCornerStyle.Square);
-
-    private readonly GraphicsDevice _graphicsDevice;
-    private readonly Dictionary<FrameTextureSpec, Texture2D> _frameTextures = new();
+    // UiScope.Own keeps this shared cache alive until all scene visuals detach.
+    private readonly GameUiTextureCache _textures;
     private bool _disposed;
 
-    public GameUiTheme(GraphicsDevice graphicsDevice)
-    {
-        _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
-    }
+    public GameUiTheme(GraphicsDevice graphicsDevice) =>
+        _textures = new GameUiTextureCache(
+            graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice)));
 
     public RectangleRuntime CreateOverlay()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
         var overlay = new RectangleRuntime
         {
             FillColor = OverlayColor,
@@ -55,31 +44,19 @@ public sealed class GameUiTheme : IDisposable
         return overlay;
     }
 
-    /// <summary>Creates a panel; zero chamfer or border size disables that feature.</summary>
-    public ContainerRuntime CreatePanel(
-        float width,
-        float height,
+    /// <summary>Creates one framed visual; the screen controls its placement.</summary>
+    public ContainerRuntime CreatePanel(float width, float height,
         int chamferSize = DefaultChamferSize,
         int borderThickness = DefaultBorderThickness)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateSize(width, height);
         ValidateFrameSize(chamferSize, borderThickness);
-        var texture = GetFrameTexture(new FrameTextureSpec(
-            chamferSize,
-            borderThickness,
-            PanelCorners,
-            PanelColor,
-            PanelBorderColor));
-
-        var panel = new ContainerRuntime
-        {
-            Width = width,
-            Height = height
-        };
+        var panel = new ContainerRuntime { Width = width, Height = height };
         var frame = new NineSliceRuntime
         {
-            Texture = texture,
+            Texture = _textures.GetFrameTexture(chamferSize, borderThickness,
+                PanelColor, PanelBorderColor),
             TextureAddress = TextureAddress.EntireTexture,
             Color = Color.White
         };
@@ -88,11 +65,8 @@ public sealed class GameUiTheme : IDisposable
         return panel;
     }
 
-    /// <summary>Creates a button; zero chamfer or border size disables that feature.</summary>
-    public Button CreateButton(
-        string text,
-        float width,
-        float height,
+    /// <summary>Creates one compact control; the screen controls its placement.</summary>
+    public Button CreateButton(string text, float width, float height,
         int chamferSize = DefaultChamferSize,
         int borderThickness = DefaultBorderThickness)
     {
@@ -100,28 +74,77 @@ public sealed class GameUiTheme : IDisposable
         ArgumentNullException.ThrowIfNull(text);
         ValidateSize(width, height);
         ValidateFrameSize(chamferSize, borderThickness);
-        var texture = GetFrameTexture(new FrameTextureSpec(
-            chamferSize,
-            borderThickness,
-            ButtonCorners,
-            Color.Transparent,
-            Color.White));
 
-        var button = new Button
-        {
-            Text = text,
-            Width = width,
-            Height = height
-        };
-
+        var button = new Button { Text = text, Width = width, Height = height };
         var visual = (ButtonVisual)button.Visual;
-        visual.Background.Texture = texture;
+        visual.Background.Texture = _textures.GetFrameTexture(chamferSize,
+            borderThickness, ButtonColor, ButtonBorderColor);
         visual.Background.TextureAddress = TextureAddress.EntireTexture;
-        visual.BackgroundColor = ButtonBorderColor;
-        visual.ForegroundColor = SecondaryTextColor;
-        visual.FocusedIndicator.Visible = false;
+        visual.Background.Dock(Dock.Fill);
+        visual.TextInstance.Dock(Dock.Fill);
+        visual.BackgroundColor = Color.White;
+        visual.ForegroundColor = TextPrimary;
+        visual.FocusedIndicatorColor = Accent;
         visual.TextInstance.FontSize = 16f;
         visual.TextInstance.UseFontSmoothing = true;
+        return button;
+    }
+
+    /// <summary>A borderless menu background with subtle noise and fading edges.</summary>
+    public ContainerRuntime CreatePausePanel(float width, float height)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ValidateSize(width, height);
+        var panel = new ContainerRuntime { Width = width, Height = height };
+        var background = new SpriteRuntime
+        {
+            Texture = _textures.GetPausePanelTexture(),
+            Color = Color.White
+        };
+        background.Dock(Dock.Fill);
+        panel.Children.Add(background);
+        return panel;
+    }
+
+    /// <summary>Menu-only button with explicit Gum states for mouse and focus.</summary>
+    public Button CreatePauseButton(string text, float width, float height)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(text);
+        ValidateSize(width, height);
+
+        var button = new Button { Text = text, Width = width, Height = height };
+        var visual = (ButtonVisual)button.Visual;
+        visual.Background.Texture = _textures.GetPauseButtonTexture();
+        visual.Background.TextureAddress = TextureAddress.EntireTexture;
+        visual.Background.Dock(Dock.Fill);
+        visual.TextInstance.Dock(Dock.Fill);
+        visual.BackgroundColor = Color.White;
+        visual.ForegroundColor = TextPrimary;
+        visual.FocusedIndicator.Visible = false;
+        visual.TextInstance.FontSize = 15f;
+        visual.TextInstance.UseFontSmoothing = true;
+
+        visual.States.Enabled.Clear();
+        visual.States.Enabled.Apply = () => ApplyPauseButtonColors(visual,
+            Color.White, TextPrimary);
+        visual.States.Highlighted.Clear();
+        visual.States.Highlighted.Apply = () => ApplyPauseButtonColors(visual,
+            new Color(234, 247, 255), Color.White);
+        visual.States.HighlightedFocused.Clear();
+        visual.States.HighlightedFocused.Apply = visual.States.Highlighted.Apply;
+        visual.States.Pushed.Clear();
+        visual.States.Pushed.Apply = () => ApplyPauseButtonColors(visual,
+            new Color(177, 202, 218), Color.White);
+        visual.States.Focused.Clear();
+        visual.States.Focused.Apply = () => ApplyPauseButtonColors(visual,
+            new Color(213, 233, 242), Color.White);
+        visual.States.Disabled.Clear();
+        visual.States.Disabled.Apply = () => ApplyPauseButtonColors(visual,
+            new Color(130, 136, 140), TextSecondary);
+        visual.States.DisabledFocused.Clear();
+        visual.States.DisabledFocused.Apply = visual.States.Disabled.Apply;
+        button.UpdateState();
         return button;
     }
 
@@ -132,24 +155,15 @@ public sealed class GameUiTheme : IDisposable
             return;
         }
 
-        foreach (var texture in _frameTextures.Values)
-        {
-            texture.Dispose();
-        }
-
-        _frameTextures.Clear();
+        _textures.Dispose();
         _disposed = true;
     }
 
-    private Texture2D GetFrameTexture(FrameTextureSpec spec)
+    private static void ApplyPauseButtonColors(ButtonVisual visual,
+        Color background, Color text)
     {
-        if (!_frameTextures.TryGetValue(spec, out var texture))
-        {
-            texture = CreateFrameTexture(_graphicsDevice, spec);
-            _frameTextures.Add(spec, texture);
-        }
-
-        return texture;
+        visual.Background.Color = background;
+        visual.TextInstance.Color = text;
     }
 
     private static void ValidateFrameSize(int chamferSize, int borderThickness)
@@ -177,115 +191,4 @@ public sealed class GameUiTheme : IDisposable
             throw new ArgumentOutOfRangeException(nameof(height));
         }
     }
-
-    private static Texture2D CreateFrameTexture(
-        GraphicsDevice graphicsDevice,
-        FrameTextureSpec spec)
-    {
-        // Nine-slice textures reserve one third of each axis for every corner.
-        var cornerSize = checked(Math.Max(spec.ChamferSize, spec.BorderThickness) + 1);
-        var textureSize = checked(3 * Math.Max(MinimumFrameTextureSize / 3, cornerSize));
-        var dimensions = new FrameDimensions(textureSize, spec.ChamferSize, spec.BorderThickness);
-        var pixels = new Color[checked(textureSize * textureSize)];
-
-        for (var y = 0; y < textureSize; y++)
-        {
-            for (var x = 0; x < textureSize; x++)
-            {
-                if (!IsInsideFrame(x, y, inset: 0, dimensions, spec.Corners))
-                {
-                    continue;
-                }
-
-                var isInsideBorder = IsInsideFrame(
-                    x,
-                    y,
-                    dimensions.BorderThickness,
-                    dimensions,
-                    spec.Corners);
-                if (isInsideBorder)
-                {
-                    pixels[y * textureSize + x] = spec.FillColor;
-                }
-                else if (!IsOpenBorderCorner(x, y, dimensions, spec.Corners))
-                {
-                    pixels[y * textureSize + x] = spec.BorderColor;
-                }
-            }
-        }
-
-        var texture = new Texture2D(
-            graphicsDevice,
-            textureSize,
-            textureSize);
-        texture.SetData(pixels);
-        return texture;
-    }
-
-    private static bool IsInsideFrame(
-        int x,
-        int y,
-        int inset,
-        FrameDimensions dimensions,
-        FrameCorners corners)
-    {
-        var farEdge = dimensions.TextureSize - 1 - inset;
-        if (x < inset || x > farEdge || y < inset || y > farEdge)
-        {
-            return false;
-        }
-
-        var cut = dimensions.ChamferSize - inset / 2;
-        var fromLeft = x - inset;
-        var fromTop = y - inset;
-        var fromRight = farEdge - x;
-        var fromBottom = farEdge - y;
-
-        return (corners.TopLeft != FrameCornerStyle.Chamfer || fromLeft + fromTop >= cut) &&
-            (corners.TopRight != FrameCornerStyle.Chamfer || fromRight + fromTop >= cut) &&
-            (corners.BottomRight != FrameCornerStyle.Chamfer || fromRight + fromBottom >= cut) &&
-            (corners.BottomLeft != FrameCornerStyle.Chamfer || fromLeft + fromBottom >= cut);
-    }
-
-    private static bool IsOpenBorderCorner(
-        int x,
-        int y,
-        FrameDimensions dimensions,
-        FrameCorners corners)
-    {
-        var nearLeft = x < dimensions.ChamferSize;
-        var nearTop = y < dimensions.ChamferSize;
-        var nearRight = x >= dimensions.TextureSize - dimensions.ChamferSize;
-        var nearBottom = y >= dimensions.TextureSize - dimensions.ChamferSize;
-
-        return (corners.TopLeft == FrameCornerStyle.OpenBorder && nearLeft && nearTop) ||
-            (corners.TopRight == FrameCornerStyle.OpenBorder && nearRight && nearTop) ||
-            (corners.BottomRight == FrameCornerStyle.OpenBorder && nearRight && nearBottom) ||
-            (corners.BottomLeft == FrameCornerStyle.OpenBorder && nearLeft && nearBottom);
-    }
-
-    private enum FrameCornerStyle
-    {
-        Square,
-        Chamfer,
-        OpenBorder
-    }
-
-    private readonly record struct FrameCorners(
-        FrameCornerStyle TopLeft,
-        FrameCornerStyle TopRight,
-        FrameCornerStyle BottomRight,
-        FrameCornerStyle BottomLeft);
-
-    private readonly record struct FrameDimensions(
-        int TextureSize,
-        int ChamferSize,
-        int BorderThickness);
-
-    private readonly record struct FrameTextureSpec(
-        int ChamferSize,
-        int BorderThickness,
-        FrameCorners Corners,
-        Color FillColor,
-        Color BorderColor);
 }

@@ -32,7 +32,6 @@ internal sealed class PerformanceScreen : UiScreen
     private readonly TextRuntime _farTriangles;
     private readonly TextRuntime _memory;
     private readonly TextRuntime _heap;
-    private int _viewportWidth;
     private string? _captureLabel;
     private long _lastCaptureDrawAt;
     private int _captureFrames;
@@ -45,18 +44,24 @@ internal sealed class PerformanceScreen : UiScreen
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _root.Dock(Dock.Fill);
         _root.Visible = false;
-        _textGroup = new ContainerRuntime { Width = TextWidth, Height = 112f };
-        _textGroup.Anchor(Anchor.Center);
+        _textGroup = new ContainerRuntime
+        {
+            Width = TextWidth,
+            Height = 144f,
+            ChildrenLayout = ChildrenLayout.TopToBottomStack
+        };
+        _textGroup.Anchor(Anchor.CenterVertically);
+        _textGroup.X = LeftMargin;
         _root.Children.Add(_textGroup);
 
-        _fps = AddText("FPS  --", 0f);
-        _frame = AddText("FRAME  --", 14f);
-        _chunks = AddText("CHUNKS  N --  M --  F --", 28f);
-        _nearTriangles = AddText("TRI N  --", 42f);
-        _middleTriangles = AddText("TRI M  --", 56f);
-        _farTriangles = AddText("TRI F  --", 70f);
-        _memory = AddText("RESIDENT  --", 84f);
-        _heap = AddText("HEAP  --", 98f);
+        _fps = AddText("FPS  --");
+        _frame = AddText("FRAME  --");
+        _chunks = AddText("CHUNKS  N --  M --  F --");
+        _nearTriangles = AddText("TRI N  --");
+        _middleTriangles = AddText("TRI M  --");
+        _farTriangles = AddText("TRI F  --");
+        _memory = AddText("RESIDENT  --");
+        _heap = AddText("HEAP  --");
     }
 
     public override GraphicalUiElement Visual => _root;
@@ -74,16 +79,6 @@ internal sealed class PerformanceScreen : UiScreen
         _meter.Reset();
         Console.WriteLine($"[performance] F11: {(_root.Visible ? "on" : "off")}. " +
             "FPS, frame time and memory are logged every five seconds while visible.");
-    }
-
-    public override void Refresh()
-    {
-        var width = _context.GraphicsDevice.Viewport.Width;
-        if (_viewportWidth != width)
-        {
-            _viewportWidth = width;
-            _textGroup.X = -width * 0.5f + TextWidth * 0.5f + LeftMargin;
-        }
     }
 
     public override void AfterSceneDraw()
@@ -195,12 +190,11 @@ internal sealed class PerformanceScreen : UiScreen
         _meter.Reset();
     }
 
-    private TextRuntime AddText(string value, float y)
+    private TextRuntime AddText(string value)
     {
         var text = new TextRuntime
         {
             Text = value,
-            Y = y,
             Width = TextWidth,
             Height = 18f,
             FontSize = 11f,

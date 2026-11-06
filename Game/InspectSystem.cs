@@ -122,7 +122,8 @@ public sealed class InspectSystem : GameSystem, IUpdateSystem, IContentSystem, I
             return;
         }
 
-        var outlined = world.IsAlive(_hovered) ? _hovered : _session.Selected;
+        var outlined = world.IsAlive(_hovered) && !world.Has<TerrainChunkTag>(_hovered)
+            ? _hovered : _session.Selected;
         if (!world.IsAlive(outlined) ||
             world.Has<TerrainChunkTag>(outlined) ||
             !world.TryGet<Transform3D>(outlined, out var transform) ||

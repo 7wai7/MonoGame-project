@@ -156,7 +156,7 @@ public sealed class BootstrapScene : GameScene
                         x, z, TerrainCellsPerChunk, TerrainCellSize, terrain.SampleHeight);
                     var chunk = World.CreateEntity();
                     World.Add(chunk, new Transform3D(new Vector3(heights.OriginX, 0f, heights.OriginZ)));
-                    World.Add(chunk, new TerrainChunkTag());
+                    World.Add(chunk, new TerrainChunkTag(x, z));
                     _terrainChunks.Add(new TerrainChunk(chunk, heights));
                 }
             }
