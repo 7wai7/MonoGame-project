@@ -11,6 +11,7 @@ internal static class UiText
         Width = 0f,
         WidthUnits = DimensionUnitType.RelativeToParent,
         Height = height,
+        HeightUnits = DimensionUnitType.Absolute,
         FontSize = fontSize,
         UseFontSmoothing = true,
         Color = color,

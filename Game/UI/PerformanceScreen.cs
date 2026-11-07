@@ -22,11 +22,11 @@ internal sealed class PerformanceScreen : UiScreen
     private double _captureTotalMilliseconds;
     private double _captureMaximumMilliseconds;
 
-    public PerformanceScreen(EngineContext context, World world, GameUiTheme theme)
+    public PerformanceScreen(EngineContext context, World world)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _world = world ?? throw new ArgumentNullException(nameof(world));
-        _view = new PerformanceStatsView(theme);
+        _view = new PerformanceStatsView();
     }
 
     public override GraphicalUiElement Visual => _view.Visual;

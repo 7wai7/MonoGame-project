@@ -88,11 +88,15 @@ The menu's exit button requests application shutdown through
 processes the click. The menu currently overlays the scene; it does not pause
 the physics simulation.
 
-`GameUiTheme` is an immutable set of semantic colors. Each view creates and
-lays out its own Gum controls, then applies shared visual rules through
-`UiPanelStyles` or `UiButtonStyles`. `GameUiTextureCache` shares generated frame
-and noise textures across those views. The scene's UI scope owns this cache and
-disposes it after detaching the screens.
+The UI layout and visual style live in `Content/GumProject/GameUi.gumx`.
+`Screens/*.gusx` define the pause menu, inspect HUD and performance HUD;
+`Components/*.gucx` define their shared panel and button visuals; `Standards/*.gutx`
+provide Gum's base elements. `Fonts/Poppins-Medium.ttf` and `Textures/panel_glass.png`
+are the font and translucent grid-gradient panel surface. Colors, dimensions,
+anchors and labels are edited in Gum rather than constructed in C#.
+`GumHudProject` binds named elements to callbacks and live measurements.
+The inspector's component rows remain runtime Gum controls because their count
+and contents change with the selected ECS entity.
 
 The stack selects a mouse mode; `InputService` owns the actual cursor capture.
 When an active window switches to `Free`, it releases capture and places the
@@ -114,10 +118,8 @@ attach to Gum's `ModalRoot` only while open, blocking other controls. Individual
 screens do not call `AddToRoot`.
 
 `GameEngine` opens a `UiScope` before initializing each scene and disposes that
-scope after the scene shuts down. The scope owns its screens and shared UI
-resources, including `GameUiTextureCache`; it detaches screens before disposing
-their shared textures. A global scope is available for UI that must survive
-scene changes.
+scope after the scene shuts down. The scope detaches and disposes its screens.
+A global scope is available for UI that must survive scene changes.
 
 Each `UiScreen` owns its visual subtree and local behavior. `UiManager` calls
 `HandleInput()` before ECS updates, `Refresh()` after ECS and physics, and

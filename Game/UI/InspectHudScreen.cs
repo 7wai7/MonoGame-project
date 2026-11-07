@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using Gum.DataTypes;
-using Gum.GueDeriving;
 using Gum.Wireframe;
 using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Ecs;
@@ -11,20 +9,28 @@ using MonoGame_project.Engine.UI;
 
 namespace MonoGame_project.Game.UI;
 
-/// <summary>Coordinates inspect UI components; 3D picking stays in InspectSystem.</summary>
+/// <summary>Connects the Gum inspector layout to selection and ECS snapshots.</summary>
 internal sealed class InspectHudScreen : UiScreen
 {
-    private const float SafeAreaInset = 16f;
     private static readonly TimeSpan RemovedNoticeDuration = TimeSpan.FromSeconds(2);
 
     private readonly EngineContext _context;
     private readonly World _world;
     private readonly InspectSessionState _session;
-    private readonly ContainerRuntime _root = new();
-    private readonly ContainerRuntime _safeArea = new();
-    private readonly InspectReticleView _reticle;
-    private readonly InspectSelectionCard _selection;
-    private readonly InspectDetailsPanel _details;
+    private readonly GraphicalUiElement _visual;
+    private readonly GraphicalUiElement _reticle;
+    private readonly GraphicalUiElement _selection;
+    private readonly GraphicalUiElement _selectionTitle;
+    private readonly GraphicalUiElement _details;
+    private readonly GraphicalUiElement _detailTitle;
+    private readonly GraphicalUiElement _primary;
+    private readonly GraphicalUiElement _secondary;
+    private readonly GraphicalUiElement _state;
+    private readonly GraphicalUiElement _componentsLabel;
+    private readonly GraphicalUiElement _footer;
+    private readonly GumHudButton _detailsButton;
+    private readonly GumHudButton _closeButton;
+    private readonly InspectComponentList _componentList;
     private readonly InspectRowsModel _rows = new();
 
     private Entity _displayedEntity = Entity.None;
@@ -34,36 +40,32 @@ internal sealed class InspectHudScreen : UiScreen
     private bool _disposed;
 
     public InspectHudScreen(EngineContext context, World world,
-        InspectSessionState session, GameUiTheme theme, GameUiTextureCache textures)
+        InspectSessionState session)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _session = session ?? throw new ArgumentNullException(nameof(session));
-        ArgumentNullException.ThrowIfNull(theme);
-        ArgumentNullException.ThrowIfNull(textures);
 
-        _root.Dock(Dock.Fill);
-        _root.Visible = false;
-        _safeArea.X = SafeAreaInset;
-        _safeArea.Y = SafeAreaInset;
-        _safeArea.Width = -2f * SafeAreaInset;
-        _safeArea.WidthUnits = DimensionUnitType.RelativeToParent;
-        _safeArea.Height = -2f * SafeAreaInset;
-        _safeArea.HeightUnits = DimensionUnitType.RelativeToParent;
-        _safeArea.MinWidth = 1f;
-        _safeArea.MinHeight = 1f;
-        _reticle = new InspectReticleView(theme);
-        _selection = new InspectSelectionCard(theme, textures, OpenDetails);
-        _details = new InspectDetailsPanel(theme, textures, CloseDetails, OnRowClicked);
-        _root.Children.Add(_reticle.Visual);
-        _root.Children.Add(_safeArea);
-        _safeArea.Children.Add(_selection.Visual);
-        _safeArea.Children.Add(_details.Visual);
+        _visual = GumHudProject.CreateScreen("InspectHud");
+        _visual.Visible = false;
+        _reticle = GumHudProject.Require(_visual, "Reticle");
+        _selection = GumHudProject.Require(_visual, "SelectionPanel");
+        _selectionTitle = GumHudProject.Require(_visual, "SelectionTitle");
+        _details = GumHudProject.Require(_visual, "DetailsPanel");
+        _detailTitle = GumHudProject.Require(_visual, "DetailTitle");
+        _primary = GumHudProject.Require(_visual, "SummaryPrimary");
+        _secondary = GumHudProject.Require(_visual, "SummarySecondary");
+        _state = GumHudProject.Require(_visual, "SummaryState");
+        _componentsLabel = GumHudProject.Require(_visual, "ComponentsLabel");
+        _footer = GumHudProject.Require(_visual, "Footer");
+        _detailsButton = new GumHudButton(_visual, "DetailsButton", "DETAILS", OpenDetails);
+        _closeButton = new GumHudButton(_visual, "CloseButton", "CLOSE", CloseDetails);
+        _componentList = new InspectComponentList(OnRowClicked);
+        GumHudProject.Require(_visual, "ListSlot").Children.Add(_componentList.Visual);
     }
 
-    public override GraphicalUiElement Visual => _root;
+    public override GraphicalUiElement Visual => _visual;
 
-    // UI input precedes ECS picking, so I can change only the panel state here.
     public override void HandleInput()
     {
         if (InputContexts.CanUseInspect(_context.InputContexts) &&
@@ -80,7 +82,7 @@ internal sealed class InspectHudScreen : UiScreen
         var cameraEntity = Entity.None;
         var active = InputContexts.CanUseInspect(_context.InputContexts) &&
             InspectCameraControlSystem.TryGetControlledCamera(_world, out cameraEntity);
-        _root.Visible = active;
+        _visual.Visible = active;
         _reticle.Visible = active &&
             _context.InputContexts.Current == InputContexts.InspectViewport;
         if (!active)
@@ -104,11 +106,12 @@ internal sealed class InspectHudScreen : UiScreen
             _displayedEntity = entity;
             _removedAt = 0;
             _rows.Reset();
-            _details.ResetRows();
+            _componentList.Reset();
             _rowsDirty = true;
         }
 
-        _selection.Show(InspectObjectPresentation.Label(_world, entity), true);
+        GumHudProject.SetText(_selectionTitle, InspectObjectPresentation.Label(_world, entity));
+        _detailsButton.Visible = true;
         _selection.Visible = !_detailsOpen;
         _details.Visible = _detailsOpen;
         if (!_detailsOpen)
@@ -116,27 +119,38 @@ internal sealed class InspectHudScreen : UiScreen
             return;
         }
 
-        _details.RefreshResponsiveVisibility();
-        _details.SetSummary(InspectObjectPresentation.Summary(_world, entity,
-            _world.Get<Transform3D>(cameraEntity).Position, transform));
+        RefreshResponsiveVisibility();
+        var summary = InspectObjectPresentation.Summary(_world, entity,
+            _world.Get<Transform3D>(cameraEntity).Position, transform);
+        GumHudProject.SetText(_detailTitle, summary.Title);
+        GumHudProject.SetText(_primary, summary.Primary);
+        GumHudProject.SetText(_secondary, summary.Secondary);
+        GumHudProject.SetText(_state, summary.State);
         var sampled = _rows.SampleIfDue(_world, entity);
         if (sampled || _rowsDirty)
         {
-            _details.SetRows(_rows.Revision, _rows.FormatRows(entity, renderer));
+            _componentList.SetRows(_rows.Revision, _rows.FormatRows(entity, renderer));
             _rowsDirty = false;
         }
     }
 
     public override void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _selection.Dispose();
-        _details.Dispose();
+        if (_disposed) return;
+        _detailsButton.Dispose();
+        _closeButton.Dispose();
+        _componentList.Dispose();
         _disposed = true;
+    }
+
+    private void RefreshResponsiveVisibility()
+    {
+        var height = _details.AbsoluteHeight;
+        _primary.Visible = height >= 300f;
+        _secondary.Visible = height >= 300f;
+        _state.Visible = height >= 300f;
+        _componentsLabel.Visible = height >= 260f;
+        _footer.Visible = height >= 330f;
     }
 
     private void ShowNoSelection()
@@ -155,7 +169,8 @@ internal sealed class InspectHudScreen : UiScreen
         _selection.Visible = showRemoved;
         if (showRemoved)
         {
-            _selection.Show("Object removed", allowDetails: false);
+            GumHudProject.SetText(_selectionTitle, "OBJECT REMOVED");
+            _detailsButton.Visible = false;
         }
         else
         {
@@ -183,10 +198,7 @@ internal sealed class InspectHudScreen : UiScreen
     private void OnRowClicked(int index)
     {
         if (_context.InputContexts.Current != InputContexts.InspectCursor ||
-            !_detailsOpen || !_world.IsAlive(_session.Selected))
-        {
-            return;
-        }
+            !_detailsOpen || !_world.IsAlive(_session.Selected)) return;
 
         _rows.ToggleRow(index);
         _rowsDirty = true;
@@ -194,17 +206,10 @@ internal sealed class InspectHudScreen : UiScreen
 
     private void SetDetailsOpen(bool open)
     {
-        if (_detailsOpen == open)
-        {
-            return;
-        }
-
+        if (_detailsOpen == open) return;
         _detailsOpen = open;
         _rows.ClearSnapshots();
         _rowsDirty = true;
-        if (!open)
-        {
-            _details.Visible = false;
-        }
+        if (!open) _details.Visible = false;
     }
 }

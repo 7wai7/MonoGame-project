@@ -14,12 +14,12 @@ internal sealed class UiTextRow : IDisposable
     private bool _clickable;
     private bool _hovered;
 
-    public UiTextRow(GameUiTheme theme, float height, Action clicked)
+    public UiTextRow(float height, Action clicked)
     {
-        ArgumentNullException.ThrowIfNull(theme);
         _clicked = clicked ?? throw new ArgumentNullException(nameof(clicked));
-        _accent = theme.Accent;
-        _text = UiText.Create(14f, theme.TextPrimary, height);
+        _accent = HudPalette.Accent;
+        _text = UiText.Create(16f, HudPalette.Text, height);
+        _text.Font = "Poppins";
         _text.HasEvents = true;
         _text.Click += OnClick;
         _text.RollOn += OnRollOn;

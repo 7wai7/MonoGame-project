@@ -10,19 +10,18 @@ namespace MonoGame_project.Game.UI;
 internal sealed class PauseMenuScreen : UiScreen
 {
     private readonly EngineContext _context;
-    private readonly PauseMenuView _view;
+    private readonly GraphicalUiElement _visual;
+    private readonly GumHudButton _exitButton;
     private bool _disposed;
 
-    public PauseMenuScreen(EngineContext context, GameUiTheme theme,
-        GameUiTextureCache textures)
+    public PauseMenuScreen(EngineContext context)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        _view = new PauseMenuView(theme, textures, RequestExit);
+        _visual = GumHudProject.CreateScreen("PauseMenu");
+        _exitButton = new GumHudButton(_visual, "ExitButton", "EXIT", RequestExit);
     }
 
-    public override GraphicalUiElement Visual => _view.Visual;
-
-    public override void Refresh() => _view.RefreshResponsiveVisibility();
+    public override GraphicalUiElement Visual => _visual;
 
     public override void HandleInput()
     {
@@ -51,7 +50,7 @@ internal sealed class PauseMenuScreen : UiScreen
             return;
         }
 
-        _view.Dispose();
+        _exitButton.Dispose();
         _disposed = true;
     }
 

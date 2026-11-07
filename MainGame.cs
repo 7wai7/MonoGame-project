@@ -1,5 +1,4 @@
 ﻿using Gum;
-using Gum.Forms;
 using Gum.Wireframe;
 using KernSmith.Gum;
 using Microsoft.Xna.Framework;
@@ -54,10 +53,11 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     {
         using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
         {
-            GumUI.Initialize(this, DefaultVisualsVersion.V3);
+            GumUI.Initialize(this, "GumProject/GameUi.gumx");
             GumUI.EnableExpandToWindow();
-            CustomSetPropertyOnRenderable.InMemoryFontCreator =
-                new KernSmithFontCreator(GraphicsDevice);
+            var fonts = new KernSmithFontCreator(GraphicsDevice);
+            KernSmithFontCreator.RegisterFont("Poppins", "Fonts/Poppins-Medium.ttf");
+            CustomSetPropertyOnRenderable.InMemoryFontCreator = fonts;
 
             var context = new EngineContext(
                 GraphicsDevice,
