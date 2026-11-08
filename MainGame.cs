@@ -1,5 +1,6 @@
 ﻿using Gum;
 using Gum.Wireframe;
+using Gum.GueDeriving;
 using KernSmith.Gum;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -9,6 +10,7 @@ using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Input;
 using MonoGame_project.Engine.UI;
 using MonoGame_project.Game;
+using MonoGame_project.Game.UI;
 
 namespace MonoGame_project;
 
@@ -23,6 +25,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     private SpriteBatch _spriteBatch = null!;
     private bool _firstUpdateMeasured;
     private bool _firstFrameDrawn;
+    private float _appliedUiZoom;
 
     private static GumService GumUI => GumService.Default;
 
@@ -54,10 +57,16 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
         {
             GumUI.Initialize(this, "GumProject/GameUi.gumx");
-            GumUI.EnableExpandToWindow();
+            GumUI.EnableExpandToWindow(_settings.UiScale);
+            _appliedUiZoom = _settings.UiScale;
             var fonts = new KernSmithFontCreator(GraphicsDevice);
             KernSmithFontCreator.RegisterFont("Poppins", "Fonts/Poppins-Medium.ttf");
             CustomSetPropertyOnRenderable.InMemoryFontCreator = fonts;
+            // Prepare fonts once when UI elements are created, outside Gum.Draw.
+            TextRuntime.UseFontOversampling = false;
+            UiText.RasterScale = MathF.Max(1f,
+                _settings.UiScale * GraphicsDevice.PresentationParameters.BackBufferWidth /
+                Math.Max(1, Window.ClientBounds.Width));
 
             var context = new EngineContext(
                 GraphicsDevice,
@@ -105,6 +114,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     private void UpdateFrame(GameTime gameTime)
     {
+        UpdateUiZoomForDisplayDensity();
         _engine.Update(gameTime);
 
         if (_application.ExitRequested)
@@ -138,6 +148,20 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
         _engine.Draw(gameTime, _spriteBatch!);
         base.Draw(gameTime);
+    }
+
+    private void UpdateUiZoomForDisplayDensity()
+    {
+        var windowWidth = Window.ClientBounds.Width;
+        if (windowWidth <= 0) return;
+
+        var backBufferWidth = GraphicsDevice.PresentationParameters.BackBufferWidth;
+        var uiZoom = _settings.UiScale * backBufferWidth / windowWidth;
+        if (!float.IsFinite(uiZoom) || uiZoom <= 0f ||
+            MathF.Abs(uiZoom - _appliedUiZoom) < 0.001f) return;
+
+        GumUI.EnableExpandToWindow(uiZoom);
+        _appliedUiZoom = uiZoom;
     }
 
     protected override void UnloadContent()

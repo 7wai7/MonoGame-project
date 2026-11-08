@@ -138,10 +138,11 @@ public sealed class InputService : IDisposable
             DeactivateMouseCapture();
             if (HasActiveInput && _isFocused && _game.IsActive)
             {
-                var bounds = _game.Window.ClientBounds;
-                if (bounds.Width > 0 && bounds.Height > 0)
+                var backBuffer = _game.GraphicsDevice.PresentationParameters;
+                if (backBuffer.BackBufferWidth > 0 && backBuffer.BackBufferHeight > 0)
                 {
-                    Mouse.SetPosition(bounds.Width / 2, bounds.Height / 2);
+                    Mouse.SetPosition(backBuffer.BackBufferWidth / 2,
+                        backBuffer.BackBufferHeight / 2);
                 }
             }
         }
@@ -256,10 +257,10 @@ public sealed class InputService : IDisposable
 
     private bool IsInsideWindow(MouseState mouse)
     {
-        var bounds = _game.Window.ClientBounds;
+        var backBuffer = _game.GraphicsDevice.PresentationParameters;
         return mouse.X >= 0 &&
-               mouse.X < bounds.Width &&
+               mouse.X < backBuffer.BackBufferWidth &&
                mouse.Y >= 0 &&
-               mouse.Y < bounds.Height;
+               mouse.Y < backBuffer.BackBufferHeight;
     }
 }

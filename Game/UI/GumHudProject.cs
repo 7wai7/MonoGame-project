@@ -14,7 +14,9 @@ internal static class GumHudProject
         var save = ObjectFinder.Self.GumProjectSave?.Screens
             .FirstOrDefault(screen => screen.Name == name)
             ?? throw new InvalidOperationException($"Gum screen '{name}' was not loaded.");
-        return save.ToGraphicalUiElement();
+        var visual = save.ToGraphicalUiElement();
+        UiText.PrepareFontResolution(visual);
+        return visual;
     }
 
     public static GraphicalUiElement Require(GraphicalUiElement root, string name) =>

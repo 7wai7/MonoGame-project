@@ -482,3 +482,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Project-local Retina build of MonoGame, required by MonoGame-project.csproj.
+!ThirdParty/Packages/MonoGame.Framework.DesktopGL.3.8.6.1-retina.2.nupkg

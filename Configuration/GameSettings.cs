@@ -16,6 +16,12 @@ public sealed record GameSettings
     public bool VSync { get; init; } = true;
     public Color ClearColor { get; init; } = new(22, 24, 31);
 
+    /// <summary>Use native Retina backbuffer resolution on macOS.</summary>
+    public bool UseHighDpi { get; init; } = true;
+
+    /// <summary>Scale of the whole Gum UI in logical window coordinates.</summary>
+    public float UiScale { get; init; } = 0.75f;
+
     /// <summary>Simulation frequency. Rendering remains variable-rate.</summary>
     public TimeSpan FixedTimeStep { get; init; } = TimeSpan.FromSeconds(1.0 / 60.0);
 

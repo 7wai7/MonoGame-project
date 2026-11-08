@@ -20,6 +20,7 @@ internal sealed class UiTextRow : IDisposable
         _accent = HudPalette.Accent;
         _text = UiText.Create(16f, HudPalette.Text, height);
         _text.Font = "Poppins";
+        UiText.PrepareFontResolution(_text);
         _text.HasEvents = true;
         _text.Click += OnClick;
         _text.RollOn += OnRollOn;
