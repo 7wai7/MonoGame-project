@@ -156,7 +156,7 @@
     <Variable>
       <Type>float</Type>
       <Name>MenuPanel.MaxHeight</Name>
-      <Value xsi:type="xsd:float">112.0</Value>
+      <Value xsi:type="xsd:float">184.0</Value>
       <SetsValue>true</SetsValue>
     </Variable>
     <Variable>
@@ -180,7 +180,7 @@
     <Variable>
       <Type>float</Type>
       <Name>ExitButton.Y</Name>
-      <Value xsi:type="xsd:float">0.0</Value>
+      <Value xsi:type="xsd:float">32.0</Value>
       <SetsValue>true</SetsValue>
     </Variable>
     <Variable>
@@ -219,6 +219,60 @@
       <Value xsi:type="xsd:int">1</Value>
       <SetsValue>true</SetsValue>
     </Variable>
+    <Variable>
+      <Type>string</Type>
+      <Name>SettingsButton.Parent</Name>
+      <Value xsi:type="xsd:string">MenuPanel</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>float</Type>
+      <Name>SettingsButton.X</Name>
+      <Value xsi:type="xsd:float">0.0</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>float</Type>
+      <Name>SettingsButton.Y</Name>
+      <Value xsi:type="xsd:float">-32.0</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>float</Type>
+      <Name>SettingsButton.Width</Name>
+      <Value xsi:type="xsd:float">240.0</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>float</Type>
+      <Name>SettingsButton.Height</Name>
+      <Value xsi:type="xsd:float">48.0</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>PositionUnitType</Type>
+      <Name>SettingsButton.XUnits</Name>
+      <Value xsi:type="xsd:int">6</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>PositionUnitType</Type>
+      <Name>SettingsButton.YUnits</Name>
+      <Value xsi:type="xsd:int">7</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>HorizontalAlignment</Type>
+      <Name>SettingsButton.XOrigin</Name>
+      <Value xsi:type="xsd:int">1</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
+    <Variable>
+      <Type>VerticalAlignment</Type>
+      <Name>SettingsButton.YOrigin</Name>
+      <Value xsi:type="xsd:int">1</Value>
+      <SetsValue>true</SetsValue>
+    </Variable>
   </State>
   <Instance>
     <Name>Dim</Name>
@@ -236,4 +290,9 @@
     <DefinedByBase>false</DefinedByBase>
   </Instance>
   <Behaviors />
+  <Instance>
+    <Name>SettingsButton</Name>
+    <BaseType>HudButton</BaseType>
+    <DefinedByBase>false</DefinedByBase>
+  </Instance>
 </ScreenSave>

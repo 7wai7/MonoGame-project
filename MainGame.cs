@@ -17,6 +17,8 @@ namespace MonoGame_project;
 public sealed class MainGame : Microsoft.Xna.Framework.Game
 {
     private readonly GameSettings _settings = GameSettings.Default;
+    private readonly UserSettingsStore _userSettings = new();
+    private readonly float _uiScaleAtStartup;
     private readonly GraphicsDeviceManager _graphics;
     private readonly InputService _input;
     private readonly InputContextStack _inputContexts;
@@ -31,13 +33,16 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     public MainGame()
     {
+        _uiScaleAtStartup = _userSettings.Current.UiScale;
         _graphics = new GraphicsDeviceManager(this);
         _graphics.GraphicsProfile = GraphicsProfile.HiDef;
         _input = new InputService(this);
         _inputContexts = new InputContextStack(_input);
         _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
         _graphics.PreferredBackBufferHeight = _settings.BackBufferHeight;
-        _graphics.SynchronizeWithVerticalRetrace = _settings.VSync;
+        _graphics.SynchronizeWithVerticalRetrace = _userSettings.Current.VSync;
+        _graphics.HardwareModeSwitch = false;
+        _graphics.IsFullScreen = _userSettings.Current.Fullscreen;
         _graphics.PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8;
         _graphics.PreferMultiSampling = true;
 
@@ -57,15 +62,15 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
         {
             GumUI.Initialize(this, "GumProject/GameUi.gumx");
-            GumUI.EnableExpandToWindow(_settings.UiScale);
-            _appliedUiZoom = _settings.UiScale;
+            GumUI.EnableExpandToWindow(_uiScaleAtStartup);
+            _appliedUiZoom = _uiScaleAtStartup;
             var fonts = new KernSmithFontCreator(GraphicsDevice);
             KernSmithFontCreator.RegisterFont("Poppins", "Fonts/Poppins-Medium.ttf");
             CustomSetPropertyOnRenderable.InMemoryFontCreator = fonts;
             // Prepare fonts once when UI elements are created, outside Gum.Draw.
             TextRuntime.UseFontOversampling = false;
             UiText.RasterScale = MathF.Max(1f,
-                _settings.UiScale * GraphicsDevice.PresentationParameters.BackBufferWidth /
+                _uiScaleAtStartup * GraphicsDevice.PresentationParameters.BackBufferWidth /
                 Math.Max(1, Window.ClientBounds.Width));
 
             var context = new EngineContext(
@@ -76,7 +81,8 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
                 _input,
                 _inputContexts,
                 _application,
-                new UiManager(GumUI));
+                new UiManager(GumUI),
+                _userSettings);
 
             _engine.Initialize(context);
         }
@@ -116,6 +122,16 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     {
         UpdateUiZoomForDisplayDensity();
         _engine.Update(gameTime);
+        // A settings screen needs only UI frames. Cap them even when VSync is off.
+        if (IsFixedTimeStep != _engine.IsSceneSuspended)
+        {
+            IsFixedTimeStep = _engine.IsSceneSuspended;
+            if (IsFixedTimeStep)
+            {
+                TargetElapsedTime = TimeSpan.FromSeconds(1d / 30d);
+            }
+        }
+        ApplyDisplayPreferences();
 
         if (_application.ExitRequested)
         {
@@ -156,12 +172,26 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         if (windowWidth <= 0) return;
 
         var backBufferWidth = GraphicsDevice.PresentationParameters.BackBufferWidth;
-        var uiZoom = _settings.UiScale * backBufferWidth / windowWidth;
+        var uiZoom = _uiScaleAtStartup * backBufferWidth / windowWidth;
         if (!float.IsFinite(uiZoom) || uiZoom <= 0f ||
             MathF.Abs(uiZoom - _appliedUiZoom) < 0.001f) return;
 
         GumUI.EnableExpandToWindow(uiZoom);
         _appliedUiZoom = uiZoom;
+    }
+
+    private void ApplyDisplayPreferences()
+    {
+        var preferred = _userSettings.Current;
+        if (_graphics.IsFullScreen == preferred.Fullscreen &&
+            _graphics.SynchronizeWithVerticalRetrace == preferred.VSync)
+        {
+            return;
+        }
+
+        _graphics.IsFullScreen = preferred.Fullscreen;
+        _graphics.SynchronizeWithVerticalRetrace = preferred.VSync;
+        _graphics.ApplyChanges();
     }
 
     protected override void UnloadContent()

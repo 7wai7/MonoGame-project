@@ -21,6 +21,8 @@ public sealed class UiManager : IDisposable
 
     public UiScope Global => _initialized ? _global : throw new InvalidOperationException("UI is not initialized.");
     public UiScope Scene => _scene ?? throw new InvalidOperationException("No UI scene scope is active.");
+    public bool SuspendsScene => (_scene?.SuspendsScene ?? false) ||
+                                 (_global?.SuspendsScene ?? false);
 
     internal void Initialize()
     {

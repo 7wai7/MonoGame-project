@@ -96,7 +96,9 @@ public sealed class BootstrapScene : GameScene
             context, World, inspectSession));
         var performance = new PerformanceScreen(context, World);
         context.Ui.Scene.Mount(performance);
-        context.Ui.Scene.MountModal(new PauseMenuScreen(context));
+        var settings = new SettingsScreen(context);
+        context.Ui.Scene.MountModal(new PauseMenuScreen(context, settings));
+        context.Ui.Scene.MountModal(settings);
         World.SetResource(new TerrainRenderStatistics());
 
         // One image covers the finite terrain. Render LODs and colliders use

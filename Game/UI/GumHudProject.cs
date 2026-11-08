@@ -50,6 +50,7 @@ internal sealed class GumHudButton : IDisposable
     private readonly GraphicalUiElement _surface;
     private readonly GraphicalUiElement _label;
     private readonly Action _clicked;
+    private bool _selected;
 
     public GumHudButton(GraphicalUiElement parent, string name, string label, Action clicked)
     {
@@ -71,6 +72,14 @@ internal sealed class GumHudButton : IDisposable
         set => _root.Visible = value;
     }
 
+    public void SetLabel(string label) => GumHudProject.SetText(_label, label);
+
+    public void SetSelected(bool selected)
+    {
+        _selected = selected;
+        ApplyNormalColors();
+    }
+
     public void Dispose()
     {
         _root.Click -= OnClick;
@@ -88,8 +97,21 @@ internal sealed class GumHudButton : IDisposable
 
     private void OnRollOff(object? sender, EventArgs e)
     {
-        SetSurface(27, 48, 61);
-        SetLabel(237, 243, 248);
+        ApplyNormalColors();
+    }
+
+    private void ApplyNormalColors()
+    {
+        if (_selected)
+        {
+            SetSurface(32, 66, 78);
+            SetLabel(169, 210, 255);
+        }
+        else
+        {
+            SetSurface(27, 48, 61);
+            SetLabel(237, 243, 248);
+        }
     }
 
     private void SetSurface(int red, int green, int blue)

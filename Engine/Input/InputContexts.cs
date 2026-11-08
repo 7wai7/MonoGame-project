@@ -17,6 +17,10 @@ public static class InputContexts
         nameof(PauseMenu),
         MouseMode.Free);
 
+    public static InputContext Settings { get; } = new(
+        nameof(Settings),
+        MouseMode.Free);
+
     /// <summary>Free cursor and no inspect input during automated camera measurements.</summary>
     public static InputContext TerrainBenchmark { get; } = new(
         nameof(TerrainBenchmark),

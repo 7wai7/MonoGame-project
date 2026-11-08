@@ -11,6 +11,9 @@ public sealed class UiScope : IDisposable
     private readonly List<IDisposable> _resources = [];
     private bool _disposed;
 
+    internal bool SuspendsScene => _views.Exists(mount =>
+        mount.Parent is not null && mount.View.SuspendsScene);
+
     internal UiScope(GraphicalUiElement root,
         GraphicalUiElement modalRoot)
     {

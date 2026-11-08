@@ -67,7 +67,8 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem, IRen
                     Context.Input.IsRelativeMouseCaptured;
                 if (hasOrbitMouseInput && _orbitMouseReady)
                 {
-                    RotateOrbit(Context.Input.MouseDelta, controller.MouseSensitivity,
+                    RotateOrbit(Context.Input.MouseDelta,
+                        controller.MouseSensitivity * Context.Settings.Current.InspectMouseSensitivity,
                         controller.PitchLimit);
                     ZoomOrbit();
                 }
@@ -127,7 +128,7 @@ public sealed class InspectCameraControlSystem : GameSystem, IUpdateSystem, IRen
             transform.Position,
             camera.Target,
             mouseDelta,
-            controller.MouseSensitivity,
+            controller.MouseSensitivity * Context.Settings.Current.InspectMouseSensitivity,
             controller.PitchLimit);
 
         var horizontalForward = new Vector3(forward.X, 0f, forward.Z);

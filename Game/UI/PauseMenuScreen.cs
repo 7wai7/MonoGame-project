@@ -12,13 +12,17 @@ internal sealed class PauseMenuScreen : UiScreen
     private readonly EngineContext _context;
     private readonly GraphicalUiElement _visual;
     private readonly GumHudButton _exitButton;
+    private readonly GumHudButton _settingsButton;
+    private readonly SettingsScreen _settings;
     private bool _disposed;
 
-    public PauseMenuScreen(EngineContext context)
+    public PauseMenuScreen(EngineContext context, SettingsScreen settings)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _visual = GumHudProject.CreateScreen("PauseMenu");
         _exitButton = new GumHudButton(_visual, "ExitButton", "EXIT", RequestExit);
+        _settingsButton = new GumHudButton(_visual, "SettingsButton", "SETTINGS", _settings.Open);
     }
 
     public override GraphicalUiElement Visual => _visual;
@@ -51,6 +55,7 @@ internal sealed class PauseMenuScreen : UiScreen
         }
 
         _exitButton.Dispose();
+        _settingsButton.Dispose();
         _disposed = true;
     }
 

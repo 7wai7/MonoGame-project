@@ -52,6 +52,7 @@ public sealed class GameEngine : IDisposable
     }
 
     public GameScene ActiveScene => _activeScene;
+    public bool IsSceneSuspended => _initialized && _context.Ui.SuspendsScene;
     public float InterpolationAlpha => (float)(_accumulator.TotalSeconds / _fixedTimeStep.TotalSeconds);
 
     public void Initialize(EngineContext context)
@@ -112,19 +113,26 @@ public sealed class GameEngine : IDisposable
             elapsed = _maximumFrameTime;
         }
 
-        _frameTotal += elapsed;
-        _accumulator += elapsed;
-        _lastFrameTime = new FrameTime(elapsed, _frameTotal, _frameNumber++);
-
         _context.Ui.HandleInput();
-        _activeScene.Update(_lastFrameTime);
-
-        while (_accumulator >= _fixedTimeStep)
+        if (_context.Ui.SuspendsScene)
         {
-            _fixedTotal += _fixedTimeStep;
-            var fixedTime = new FixedTime(_fixedTimeStep, _fixedTotal, _tickNumber++);
-            _activeScene.FixedUpdate(fixedTime);
-            _accumulator -= _fixedTimeStep;
+            _accumulator = TimeSpan.Zero;
+            _lastFrameTime = new FrameTime(TimeSpan.Zero, _frameTotal, _frameNumber++);
+        }
+        else
+        {
+            _frameTotal += elapsed;
+            _accumulator += elapsed;
+            _lastFrameTime = new FrameTime(elapsed, _frameTotal, _frameNumber++);
+            _activeScene.Update(_lastFrameTime);
+
+            while (_accumulator >= _fixedTimeStep)
+            {
+                _fixedTotal += _fixedTimeStep;
+                var fixedTime = new FixedTime(_fixedTimeStep, _fixedTotal, _tickNumber++);
+                _activeScene.FixedUpdate(fixedTime);
+                _accumulator -= _fixedTimeStep;
+            }
         }
 
         _context.Ui.Refresh(gameTime, _context.Input.HasActiveInput);
@@ -135,14 +143,16 @@ public sealed class GameEngine : IDisposable
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(spriteBatch);
 
-        var renderContext = new RenderContext(
-            _context!.GraphicsDevice,
-            spriteBatch,
-            gameTime,
-            _lastFrameTime,
-            InterpolationAlpha);
-
-        _activeScene.Draw(renderContext);
+        if (!_context.Ui.SuspendsScene)
+        {
+            var renderContext = new RenderContext(
+                _context.GraphicsDevice,
+                spriteBatch,
+                gameTime,
+                _lastFrameTime,
+                InterpolationAlpha);
+            _activeScene.Draw(renderContext);
+        }
         _context.Ui.Draw();
     }
 

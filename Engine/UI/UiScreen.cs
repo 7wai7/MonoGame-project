@@ -7,6 +7,9 @@ public abstract class UiScreen : IDisposable
 {
     public abstract GraphicalUiElement Visual { get; }
 
+    /// <summary>Visible modal screens may suspend scene simulation and 3D drawing.</summary>
+    public virtual bool SuspendsScene => false;
+
     // UI input runs before ECS updates so a menu can block camera input immediately.
     public virtual void HandleInput() { }
 
