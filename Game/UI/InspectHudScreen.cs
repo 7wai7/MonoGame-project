@@ -66,6 +66,18 @@ internal sealed class InspectHudScreen : UiScreen
 
     public override GraphicalUiElement Visual => _visual;
 
+    internal void ShowBenchmarkDetails(Entity entity)
+    {
+        _session.Selected = entity;
+        _displayedEntity = entity;
+        _rows.Reset();
+        _componentList.Reset();
+        SetDetailsOpen(true);
+        _rows.SampleIfDue(_world, entity);
+        _rows.ExpandFirstComponent();
+        _rowsDirty = true;
+    }
+
     public override void HandleInput()
     {
         if (InputContexts.CanUseInspect(_context.InputContexts) &&
@@ -80,11 +92,13 @@ internal sealed class InspectHudScreen : UiScreen
     public override void Refresh()
     {
         var cameraEntity = Entity.None;
-        var active = InputContexts.CanUseInspect(_context.InputContexts) &&
+        var active = (InputContexts.CanUseInspect(_context.InputContexts) ||
+                      _context.Benchmark is not null) &&
             InspectCameraControlSystem.TryGetControlledCamera(_world, out cameraEntity);
         _visual.Visible = active;
         _reticle.Visible = active &&
-            _context.InputContexts.Current == InputContexts.InspectViewport;
+            (_context.InputContexts.Current == InputContexts.InspectViewport ||
+             _context.Benchmark is { InspectorVisible: false });
         if (!active)
         {
             _rows.ClearSnapshots();

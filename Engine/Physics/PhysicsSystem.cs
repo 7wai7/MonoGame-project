@@ -84,11 +84,14 @@ public sealed class PhysicsSystem : GameSystem, IFixedUpdateSystem
         _collisionEvents.Publish();
 
         SynchronizeTransforms();
-        _stepProfiler.Record(
-            stepDuration,
-            Stopwatch.GetElapsedTime(fixedStartedAt),
-            _simulation.BodyCount,
-            _simulation.TerrainBodyCount);
+        if (Context.Benchmark is null)
+        {
+            _stepProfiler.Record(
+                stepDuration,
+                Stopwatch.GetElapsedTime(fixedStartedAt),
+                _simulation.BodyCount,
+                _simulation.TerrainBodyCount);
+        }
     }
 
     protected override void OnShutdown()

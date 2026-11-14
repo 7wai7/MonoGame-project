@@ -34,6 +34,9 @@ internal sealed class TerrainColliderStreamingSystem : GameSystem, IUpdateSystem
     private int _firstChunkZ;
     private int _lastChunkZ;
 
+    /// <summary>Stops collision neighborhood changes during a controlled render capture.</summary>
+    internal bool IsPaused { get; set; }
+
     public TerrainColliderStreamingSystem(
         IReadOnlyList<TerrainChunk> chunks,
         float chunkWorldSize,
@@ -73,7 +76,10 @@ internal sealed class TerrainColliderStreamingSystem : GameSystem, IUpdateSystem
         RefreshColliders();
     }
 
-    public void Update(World world, in FrameTime time) => RefreshColliders();
+    public void Update(World world, in FrameTime time)
+    {
+        if (!IsPaused) RefreshColliders();
+    }
 
     private void RefreshColliders()
     {

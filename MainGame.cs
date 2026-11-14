@@ -1,4 +1,5 @@
 ﻿using Gum;
+using System.Diagnostics;
 using Gum.Wireframe;
 using Gum.GueDeriving;
 using KernSmith.Gum;
@@ -17,6 +18,8 @@ namespace MonoGame_project;
 public sealed class MainGame : Microsoft.Xna.Framework.Game
 {
     private readonly GameSettings _settings = GameSettings.Default;
+    private readonly PerformanceBenchmarkOptions? _benchmarkOptions;
+    private readonly PerformanceBenchmarkRecorder? _benchmarkRecorder;
     private readonly UserSettingsStore _userSettings = new();
     private readonly float _uiScaleAtStartup;
     private readonly GraphicsDeviceManager _graphics;
@@ -25,14 +28,17 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
     private readonly ApplicationControl _application = new();
     private readonly GameEngine _engine;
     private SpriteBatch _spriteBatch = null!;
+    private RenderTarget2D? _benchmarkTarget;
     private bool _firstUpdateMeasured;
     private bool _firstFrameDrawn;
     private float _appliedUiZoom;
 
     private static GumService GumUI => GumService.Default;
 
-    public MainGame()
+    public MainGame(PerformanceBenchmarkOptions? benchmarkOptions = null)
     {
+        _benchmarkOptions = benchmarkOptions;
+        _benchmarkRecorder = benchmarkOptions is null ? null : new PerformanceBenchmarkRecorder(benchmarkOptions);
         _uiScaleAtStartup = _userSettings.Current.UiScale;
         _graphics = new GraphicsDeviceManager(this);
         _graphics.GraphicsProfile = GraphicsProfile.HiDef;
@@ -40,9 +46,9 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         _inputContexts = new InputContextStack(_input);
         _graphics.PreferredBackBufferWidth = _settings.BackBufferWidth;
         _graphics.PreferredBackBufferHeight = _settings.BackBufferHeight;
-        _graphics.SynchronizeWithVerticalRetrace = _userSettings.Current.VSync;
+        _graphics.SynchronizeWithVerticalRetrace = benchmarkOptions is null && _userSettings.Current.VSync;
         _graphics.HardwareModeSwitch = false;
-        _graphics.IsFullScreen = _userSettings.Current.Fullscreen;
+        _graphics.IsFullScreen = benchmarkOptions?.Fullscreen ?? _userSettings.Current.Fullscreen;
         _graphics.PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8;
         _graphics.PreferMultiSampling = true;
 
@@ -52,26 +58,31 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         Window.Title = _settings.WindowTitle;
 
         _engine = new GameEngine(
-            new BootstrapScene(),
+            new BootstrapScene(benchmarkOptions),
             _settings.FixedTimeStep,
             _settings.MaximumFrameTime);
     }
 
     protected override void Initialize()
     {
-        using (StartupProfiler.Measure("Gum + engine Initialize (scene + systems)"))
+        using (StartupProfiler.Measure("UI + engine Initialize (scene + systems)"))
         {
-            GumUI.Initialize(this, "GumProject/GameUi.gumx");
-            GumUI.EnableExpandToWindow(_uiScaleAtStartup);
-            _appliedUiZoom = _uiScaleAtStartup;
-            var fonts = new KernSmithFontCreator(GraphicsDevice);
-            KernSmithFontCreator.RegisterFont("Poppins", "Fonts/Poppins-Medium.ttf");
-            CustomSetPropertyOnRenderable.InMemoryFontCreator = fonts;
-            // Prepare fonts once when UI elements are created, outside Gum.Draw.
-            TextRuntime.UseFontOversampling = false;
-            UiText.RasterScale = MathF.Max(1f,
-                _uiScaleAtStartup * GraphicsDevice.PresentationParameters.BackBufferWidth /
-                Math.Max(1, Window.ClientBounds.Width));
+            LogBenchmarkDisplay("before Gum initialization");
+            if (_benchmarkOptions?.UiEnabled != false)
+            {
+                GumUI.Initialize(this, "GumProject/GameUi.gumx");
+                GumUI.EnableExpandToWindow(_uiScaleAtStartup);
+                _appliedUiZoom = _uiScaleAtStartup;
+                var fonts = new KernSmithFontCreator(GraphicsDevice);
+                KernSmithFontCreator.RegisterFont("Poppins", "Fonts/Poppins-Medium.ttf");
+                CustomSetPropertyOnRenderable.InMemoryFontCreator = fonts;
+                // Prepare fonts once when UI elements are created, outside Gum.Draw.
+                TextRuntime.UseFontOversampling = false;
+                UiText.RasterScale = MathF.Max(1f,
+                    _uiScaleAtStartup * GraphicsDevice.PresentationParameters.BackBufferWidth /
+                    Math.Max(1, Window.ClientBounds.Width));
+            }
+            LogBenchmarkDisplay("after Gum initialization");
 
             var context = new EngineContext(
                 GraphicsDevice,
@@ -81,8 +92,9 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
                 _input,
                 _inputContexts,
                 _application,
-                new UiManager(GumUI),
-                _userSettings);
+                new UiManager(GumUI, _benchmarkOptions?.UiEnabled != false, _benchmarkRecorder),
+                _userSettings,
+                _benchmarkRecorder);
 
             _engine.Initialize(context);
         }
@@ -93,12 +105,20 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         {
             base.Initialize();
         }
+        LogBenchmarkDisplay("after MonoGame initialization");
+        _benchmarkRecorder?.WriteEnvironment(GraphicsDevice, Window, _uiScaleAtStartup);
     }
 
     protected override void LoadContent()
     {
         using var startupStage = StartupProfiler.Measure("MonoGame LoadContent (scene + systems)");
         _spriteBatch = new SpriteBatch(GraphicsDevice);
+        if (_benchmarkOptions?.UsesFixedRenderTarget == true)
+        {
+            _benchmarkTarget = new RenderTarget2D(GraphicsDevice,
+                _benchmarkOptions.InternalWidth, _benchmarkOptions.InternalHeight,
+                false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8);
+        }
         _engine.LoadContent();
     }
 
@@ -120,8 +140,13 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     private void UpdateFrame(GameTime gameTime)
     {
+        _benchmarkRecorder?.BeginFrame();
+        var profiling = _benchmarkRecorder?.IsCapturing == true;
+        var started = profiling ? Stopwatch.GetTimestamp() : 0;
         UpdateUiZoomForDisplayDensity();
         _engine.Update(gameTime);
+        if (profiling)
+            _benchmarkRecorder!.RecordUpdate(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         // A settings screen needs only UI frames. Cap them even when VSync is off.
         if (IsFixedTimeStep != _engine.IsSceneSuspended)
         {
@@ -160,14 +185,33 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     private void DrawFrame(GameTime gameTime)
     {
+        var profiling = _benchmarkRecorder?.IsCapturing == true;
+        var started = profiling ? Stopwatch.GetTimestamp() : 0;
+        if (_benchmarkTarget is not null) GraphicsDevice.SetRenderTarget(_benchmarkTarget);
         GraphicsDevice.Clear(_settings.ClearColor);
 
         _engine.Draw(gameTime, _spriteBatch!);
         base.Draw(gameTime);
+        if (_benchmarkTarget is not null)
+        {
+            GraphicsDevice.SetRenderTarget(null);
+            var backBuffer = GraphicsDevice.PresentationParameters;
+            _spriteBatch.Begin(SpriteSortMode.Immediate,
+                Microsoft.Xna.Framework.Graphics.BlendState.Opaque,
+                SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            _spriteBatch.Draw(_benchmarkTarget,
+                new Rectangle(0, 0, backBuffer.BackBufferWidth, backBuffer.BackBufferHeight),
+                Color.White);
+            _spriteBatch.End();
+        }
+        if (profiling)
+            _benchmarkRecorder!.EndFrame(started,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds, GraphicsDevice, Window);
     }
 
     private void UpdateUiZoomForDisplayDensity()
     {
+        if (_benchmarkOptions?.UiEnabled == false) return;
         var windowWidth = Window.ClientBounds.Width;
         if (windowWidth <= 0) return;
 
@@ -182,6 +226,7 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
 
     private void ApplyDisplayPreferences()
     {
+        if (_benchmarkOptions is not null) return;
         var preferred = _userSettings.Current;
         if (_graphics.IsFullScreen == preferred.Fullscreen &&
             _graphics.SynchronizeWithVerticalRetrace == preferred.VSync)
@@ -194,9 +239,23 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         _graphics.ApplyChanges();
     }
 
+    private void LogBenchmarkDisplay(string phase)
+    {
+        if (_benchmarkRecorder is null) return;
+        var buffer = GraphicsDevice.PresentationParameters;
+        _benchmarkRecorder.Event("display", $"{phase}: window {Window.ClientBounds.Width}x{Window.ClientBounds.Height}, " +
+            $"backbuffer {buffer.BackBufferWidth}x{buffer.BackBufferHeight}, " +
+            $"preferred {_graphics.PreferredBackBufferWidth}x{_graphics.PreferredBackBufferHeight}, " +
+            $"fullscreen {_graphics.IsFullScreen}, " +
+            $"adapter mode {GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width}x" +
+            $"{GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height}.");
+    }
+
     protected override void UnloadContent()
     {
         _engine.UnloadContent();
+        _benchmarkTarget?.Dispose();
+        _benchmarkTarget = null;
         _spriteBatch.Dispose();
         _spriteBatch = null!;
 
@@ -209,7 +268,8 @@ public sealed class MainGame : Microsoft.Xna.Framework.Game
         {
             _engine.Dispose();
             _input.Dispose();
-            GumUI.Uninitialize();
+            if (_benchmarkOptions?.UiEnabled != false) GumUI.Uninitialize();
+            _benchmarkRecorder?.Dispose();
         }
 
         base.Dispose(disposing);

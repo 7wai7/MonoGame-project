@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using MonoGame_project.Engine.Diagnostics;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGame_project.Engine.Rendering;
@@ -124,13 +126,20 @@ public sealed class GameEngine : IDisposable
             _frameTotal += elapsed;
             _accumulator += elapsed;
             _lastFrameTime = new FrameTime(elapsed, _frameTotal, _frameNumber++);
+            var profiling = _context.Benchmark?.IsCapturing == true;
+            var started = profiling ? Stopwatch.GetTimestamp() : 0;
             _activeScene.Update(_lastFrameTime);
+            if (profiling)
+                _context.Benchmark!.RecordSceneUpdate(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
 
             while (_accumulator >= _fixedTimeStep)
             {
                 _fixedTotal += _fixedTimeStep;
                 var fixedTime = new FixedTime(_fixedTimeStep, _fixedTotal, _tickNumber++);
+                started = profiling ? Stopwatch.GetTimestamp() : 0;
                 _activeScene.FixedUpdate(fixedTime);
+                if (profiling)
+                    _context.Benchmark!.RecordFixedUpdate(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 _accumulator -= _fixedTimeStep;
             }
         }
@@ -143,7 +152,8 @@ public sealed class GameEngine : IDisposable
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(spriteBatch);
 
-        if (!_context.Ui.SuspendsScene)
+        if (!_context.Ui.SuspendsScene &&
+            _context.Benchmark?.RenderMode != BenchmarkRenderMode.ClearOnly)
         {
             var renderContext = new RenderContext(
                 _context.GraphicsDevice,
@@ -151,7 +161,11 @@ public sealed class GameEngine : IDisposable
                 gameTime,
                 _lastFrameTime,
                 InterpolationAlpha);
+            var profiling = _context.Benchmark?.IsCapturing == true;
+            var started = profiling ? Stopwatch.GetTimestamp() : 0;
             _activeScene.Draw(renderContext);
+            if (profiling)
+                _context.Benchmark!.RecordSceneDraw(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
         _context.Ui.Draw();
     }

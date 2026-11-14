@@ -103,6 +103,12 @@ internal sealed class InspectRowsModel
         RebuildRows();
     }
 
+    public void ExpandFirstComponent()
+    {
+        if (_componentTypes.Count == 0 || !_expandedComponents.Add(_componentTypes[0])) return;
+        RebuildRows();
+    }
+
     public IReadOnlyList<InspectRowDisplay> FormatRows(Entity entity, MeshRenderer renderer)
     {
         _displayRows.Clear();

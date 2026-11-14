@@ -33,7 +33,7 @@ internal sealed class PerformanceScreen : UiScreen
 
     public override void HandleInput()
     {
-        if (_captureLabel is not null || !_context.Input.HasActiveInput ||
+        if (_context.Benchmark is not null || _captureLabel is not null || !_context.Input.HasActiveInput ||
             !_context.Input.WasKeyPressed(Keys.F11))
         {
             return;

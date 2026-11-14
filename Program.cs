@@ -8,6 +8,7 @@ if (args.Contains("--physics-smoke", StringComparer.Ordinal))
 }
 
 StartupProfiler.Start();
+var benchmarkOptions = PerformanceBenchmarkOptions.Parse(args);
 if (OperatingSystem.IsMacOS())
 {
     // MonoGame reads this when creating the SDL window.
@@ -15,5 +16,5 @@ if (OperatingSystem.IsMacOS())
         GameSettings.Default.UseHighDpi ? "1" : "0");
 }
 
-using var game = new MonoGame_project.MainGame();
+using var game = new MonoGame_project.MainGame(benchmarkOptions);
 game.Run();

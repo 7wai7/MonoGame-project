@@ -1,9 +1,11 @@
 using System;
+using System.Diagnostics;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using MonoGame_project.Ecs;
+using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.Input;
 using MonoGame_project.Engine.Rendering;
 using MonoGame_project.Engine.Rendering.ThreeD;
@@ -35,6 +37,7 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
     private const float DetailFadeEnd = 650f;
 
     private Effect? _effect;
+    private BasicEffect? _flatEffect;
     private Texture2D? _control;
     private Texture2D? _river;
     private Texture2D? _grass;
@@ -97,6 +100,16 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
 
     public void LoadContent(World world, ContentManager content)
     {
+        if (Context.Benchmark is not null)
+        {
+            _flatEffect = new BasicEffect(Context.GraphicsDevice)
+            {
+                LightingEnabled = false,
+                TextureEnabled = false,
+                VertexColorEnabled = false,
+                DiffuseColor = new Vector3(0.45f, 0.55f, 0.48f)
+            };
+        }
         _effect = content.Load<Effect>("Effects/TerrainMaterial");
         _control = content.Load<Texture2D>("TerrainMaterials/Control");
         _river = content.Load<Texture2D>("TerrainMaterials/River");
@@ -136,6 +149,8 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
 
     public void UnloadContent(World world)
     {
+        _flatEffect?.Dispose();
+        _flatEffect = null;
         // ContentManager owns these shared textures and the effect.
         _effect = null;
         _control = null;
@@ -149,6 +164,20 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
     }
 
     public void Draw(World world, in RenderContext context)
+    {
+        var benchmark = Context.Benchmark;
+        if (benchmark is null || !benchmark.IsCapturing)
+        {
+            DrawCore(world, context);
+            return;
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        DrawCore(world, context);
+        benchmark.RecordTerrainDraw(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    }
+
+    private void DrawCore(World world, in RenderContext context)
     {
         var statistics = world.GetResource<TerrainRenderStatistics>();
         if (statistics.IsEnabled)
@@ -177,15 +206,23 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
         var projection = Matrix.CreatePerspectiveFieldOfView(camera.FieldOfView,
             device.Viewport.AspectRatio, camera.NearPlane, camera.FarPlane);
         var frustum = new BoundingFrustum(view * projection);
-        _effect.Parameters["View"].SetValue(view);
-        _effect.Parameters["Projection"].SetValue(projection);
-        _effect.Parameters["CameraPosition"].SetValue(cameraTransform.Position);
-        _effect.Parameters["DebugMode"].SetValue((float)_debugMode);
-        _effect.Parameters["GrassHexEnabled"].SetValue(
-            _hexMode == TerrainHexMode.Off ? 0f : 1f);
-        _effect.Parameters["OtherHexEnabled"].SetValue(
-            _hexMode == TerrainHexMode.AllMaterials
-                ? 1f : 0f);
+        var flat = Context.Benchmark?.RenderMode == BenchmarkRenderMode.FlatTerrain;
+        if (flat)
+        {
+            _flatEffect!.View = view;
+            _flatEffect.Projection = projection;
+        }
+        else
+        {
+            _effect.Parameters["View"].SetValue(view);
+            _effect.Parameters["Projection"].SetValue(projection);
+            _effect.Parameters["CameraPosition"].SetValue(cameraTransform.Position);
+            _effect.Parameters["DebugMode"].SetValue((float)_debugMode);
+            _effect.Parameters["GrassHexEnabled"].SetValue(
+                _hexMode == TerrainHexMode.Off ? 0f : 1f);
+            _effect.Parameters["OtherHexEnabled"].SetValue(
+                _hexMode == TerrainHexMode.AllMaterials ? 1f : 0f);
+        }
 
         foreach (var entity in world.Query<Transform3D, MeshRenderer, TerrainChunkTag>())
         {
@@ -205,8 +242,10 @@ internal sealed class TerrainMaterialRenderSystem : GameSystem, IContentSystem, 
                 continue;
             }
 
-            _effect.Parameters["World"].SetValue(worldMatrix);
-            foreach (var pass in _effect.CurrentTechnique.Passes)
+            if (flat) _flatEffect!.World = worldMatrix;
+            else _effect.Parameters["World"].SetValue(worldMatrix);
+            var passes = flat ? _flatEffect!.CurrentTechnique.Passes : _effect.CurrentTechnique.Passes;
+            foreach (var pass in passes)
             {
                 pass.Apply();
                 renderer.Mesh.Draw(device);

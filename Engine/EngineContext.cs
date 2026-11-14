@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGame_project.Configuration;
 using MonoGame_project.Engine.Input;
+using MonoGame_project.Engine.Diagnostics;
 using MonoGame_project.Engine.UI;
 
 namespace MonoGame_project.Engine;
@@ -21,7 +22,8 @@ public sealed class EngineContext
         InputContextStack inputContexts,
         ApplicationControl application,
         UiManager ui,
-        UserSettingsStore settings)
+        UserSettingsStore settings,
+        PerformanceBenchmarkRecorder? benchmark = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(inputContexts);
@@ -37,6 +39,7 @@ public sealed class EngineContext
         Application = application;
         Ui = ui;
         Settings = settings;
+        Benchmark = benchmark;
     }
 
     public GraphicsDevice GraphicsDevice { get; }
@@ -48,4 +51,5 @@ public sealed class EngineContext
     public ApplicationControl Application { get; }
     public UiManager Ui { get; }
     public UserSettingsStore Settings { get; }
+    public PerformanceBenchmarkRecorder? Benchmark { get; }
 }

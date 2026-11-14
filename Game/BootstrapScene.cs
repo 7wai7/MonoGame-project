@@ -42,8 +42,10 @@ public sealed class BootstrapScene : GameScene
 
     private readonly List<TerrainChunk> _terrainChunks = [];
     private readonly TerrainRenderStreamingSystem _terrainRenderSystem;
+    private readonly TerrainColliderStreamingSystem _terrainColliderSystem;
     private readonly TerrainMaterialRenderSystem _terrainMaterialSystem = new();
     private readonly TerrainBenchmarkSystem _benchmarkSystem;
+    private readonly PerformanceBenchmarkSystem? _performanceBenchmarkSystem;
     private Entity _cube = Entity.None;
     private Entity _sphere = Entity.None;
     private Entity _movingPlatform = Entity.None;
@@ -53,7 +55,7 @@ public sealed class BootstrapScene : GameScene
     private Vector2 _terrainWorldOrigin;
     private Vector2 _terrainWorldSize;
 
-    public BootstrapScene()
+    public BootstrapScene(PerformanceBenchmarkOptions? performanceBenchmark = null)
     {
         _terrainRenderSystem = new TerrainRenderStreamingSystem(
             _terrainChunks, TerrainChunkWorldSize,
@@ -62,21 +64,25 @@ public sealed class BootstrapScene : GameScene
             TerrainRenderFarMaxPatchCellSpan,
             new Vector2(TerrainFirstChunk * TerrainChunkWorldSize),
             new Vector2(TerrainWorldExtent));
+        _terrainColliderSystem = new TerrainColliderStreamingSystem(
+            _terrainChunks, TerrainChunkWorldSize, TerrainCollisionChunkRadius);
         _benchmarkSystem = new TerrainBenchmarkSystem(
             _terrainRenderSystem, _terrainMaterialSystem);
+        if (performanceBenchmark is not null)
+            _performanceBenchmarkSystem = new PerformanceBenchmarkSystem(
+                _terrainRenderSystem, _terrainColliderSystem);
     }
 
     protected override void ConfigureSystems(SystemScheduler systems)
     {
+        if (_performanceBenchmarkSystem is not null)
+            systems.Add(_performanceBenchmarkSystem, order: -1_500);
         if (RunTerrainBenchmark)
         {
             systems.Add(_benchmarkSystem, order: -1_500);
         }
         systems.Add(new InspectCameraControlSystem(), order: -1_000);
-        systems.Add(new TerrainColliderStreamingSystem(
-            _terrainChunks,
-            TerrainChunkWorldSize,
-            TerrainCollisionChunkRadius), order: -500);
+        systems.Add(_terrainColliderSystem, order: -500);
         systems.Add(_terrainRenderSystem, order: -400);
         systems.Add(new InspectSystem(), order: 1_050);
         systems.Add(new KinematicPlatformTestSystem(), order: -100);
@@ -92,14 +98,21 @@ public sealed class BootstrapScene : GameScene
         context.InputContexts.Reset(InputContexts.InspectViewport);
         var inspectSession = new InspectSessionState();
         World.SetResource(inspectSession);
-        context.Ui.Scene.Mount(new InspectHudScreen(
-            context, World, inspectSession));
-        var performance = new PerformanceScreen(context, World);
-        context.Ui.Scene.Mount(performance);
-        var settings = new SettingsScreen(context);
-        context.Ui.Scene.MountModal(new PauseMenuScreen(context, settings));
-        context.Ui.Scene.MountModal(settings);
-        World.SetResource(new TerrainRenderStatistics());
+        InspectHudScreen? inspector = null;
+        PerformanceScreen? performance = null;
+        if (context.Ui.IsEnabled)
+        {
+            inspector = new InspectHudScreen(context, World, inspectSession);
+            context.Ui.Scene.Mount(inspector);
+            performance = new PerformanceScreen(context, World);
+            context.Ui.Scene.Mount(performance);
+            var settings = new SettingsScreen(context);
+            context.Ui.Scene.MountModal(new PauseMenuScreen(context, settings));
+            context.Ui.Scene.MountModal(settings);
+        }
+        var terrainStatistics = new TerrainRenderStatistics { IsEnabled = context.Benchmark is not null };
+        World.SetResource(terrainStatistics);
+        if (context.Benchmark is not null) context.Benchmark.TerrainStatistics = terrainStatistics;
 
         // One image covers the finite terrain. Render LODs and colliders use
         // the same CPU height chunks but triangulate them independently.
@@ -144,7 +157,7 @@ public sealed class BootstrapScene : GameScene
             pitchLimit: MathHelper.ToRadians(89f)));
         if (RunTerrainBenchmark)
         {
-            _benchmarkSystem.Configure(camera, terrain.SampleHeight, performance);
+            _benchmarkSystem.Configure(camera, terrain.SampleHeight, performance!);
         }
 
         using (StartupProfiler.Measure("Terrain height fields + ECS entities"))
@@ -161,6 +174,14 @@ public sealed class BootstrapScene : GameScene
                     _terrainChunks.Add(new TerrainChunk(chunk, heights));
                 }
             }
+        }
+
+        if (_performanceBenchmarkSystem is not null)
+        {
+            var centerIndex = (TerrainChunksPerAxis / 2) * TerrainChunksPerAxis +
+                              TerrainChunksPerAxis / 2;
+            _performanceBenchmarkSystem.Configure(camera, _terrainChunks[centerIndex].Entity,
+                terrain.SampleHeight, inspector);
         }
 
         _cube = World.CreateEntity();

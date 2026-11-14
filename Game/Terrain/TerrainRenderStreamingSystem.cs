@@ -45,6 +45,8 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
 
     /// <summary>Freezes installed meshes during a repeatable render benchmark.</summary>
     public bool IsPaused { get; set; }
+    /// <summary>Uses fixed distance thresholds for comparable benchmark geometry.</summary>
+    public bool UseDeterministicLod { get; set; }
     public bool HasRunningBuild => _buildTask is { IsCompleted: false };
 
     public TerrainRenderStreamingSystem(
@@ -165,8 +167,11 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         }
 
         var view = Matrix.CreateLookAt(cameraTransform.Position, camera.Target, camera.Up);
+        var aspectRatio = Context.Benchmark?.Options.RenderAspectRatio is > 0f
+            ? Context.Benchmark.Options.RenderAspectRatio
+            : Context.GraphicsDevice.Viewport.AspectRatio;
         var projection = Matrix.CreatePerspectiveFieldOfView(camera.FieldOfView,
-            Context.GraphicsDevice.Viewport.AspectRatio, camera.NearPlane, camera.FarPlane);
+            aspectRatio, camera.NearPlane, camera.FarPlane);
         var frustum = new BoundingFrustum(view * projection);
         if (!TryFindNext(cameraTransform.Position, frustum, out var next, out var lod))
         {
@@ -232,8 +237,11 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
         }
 
         var view = Matrix.CreateLookAt(transform.Position, camera.Target, camera.Up);
+        var aspectRatio = Context.Benchmark?.Options.RenderAspectRatio is > 0f
+            ? Context.Benchmark.Options.RenderAspectRatio
+            : Context.GraphicsDevice.Viewport.AspectRatio;
         var projection = Matrix.CreatePerspectiveFieldOfView(camera.FieldOfView,
-            Context.GraphicsDevice.Viewport.AspectRatio, camera.NearPlane, camera.FarPlane);
+            aspectRatio, camera.NearPlane, camera.FarPlane);
         var frustum = new BoundingFrustum(view * projection);
         var visible = 0;
         var ready = 0;
@@ -321,6 +329,9 @@ internal sealed class TerrainRenderStreamingSystem : GameSystem, IContentSystem,
     {
         var near = NearChunkRadius * _chunkWorldSize;
         var middle = MiddleChunkRadius * _chunkWorldSize;
+        if (UseDeterministicLod)
+            return distance < near ? TerrainRenderLod.Near :
+                distance < middle ? TerrainRenderLod.Middle : TerrainRenderLod.Far;
         var hysteresis = LodHysteresis * _chunkWorldSize;
         if (current == TerrainRenderLod.Near && distance < near + hysteresis)
         {
